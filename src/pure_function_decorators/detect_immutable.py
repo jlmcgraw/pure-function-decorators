@@ -79,8 +79,8 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
         )
 
     if isinstance(a, set) and isinstance(b, set):
-        a_set = a
-        b_set = b
+        a_set: set[object] = cast("set[object]", a)
+        b_set: set[object] = cast("set[object]", b)
         if a_set != b_set:
             removed_desc = _describe_collection(a_set - b_set)
             added_desc = _describe_collection(b_set - a_set)
@@ -88,16 +88,16 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
         return None
 
     if isinstance(a, frozenset) and isinstance(b, frozenset):
-        a_items = set(a)
-        b_items = set(b)
+        a_items: set[object] = set(cast("Iterable[object]", a))
+        b_items: set[object] = set(cast("Iterable[object]", b))
         if a_items != b_items:
             removed_desc = _describe_collection(a_items - b_items)
             added_desc = _describe_collection(b_items - a_items)
             return path, f"set changed; -{removed_desc} +{added_desc}"
         return None
 
-    a_obj: object = a
-    b_obj: object = b
+    a_obj: object = cast(object, a)
+    b_obj: object = cast(object, b)
     if hasattr(a_obj, "__dict__") and hasattr(b_obj, "__dict__"):
         a_mapping = cast("Mapping[str, Any]", a_obj.__dict__)
         b_mapping = cast("Mapping[str, Any]", b_obj.__dict__)
