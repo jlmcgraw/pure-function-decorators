@@ -96,8 +96,8 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
             return path, f"set changed; -{removed_desc} +{added_desc}"
         return None
 
-    a_obj: object = cast(object, a)
-    b_obj: object = cast(object, b)
+    a_obj: object = cast("object", a)
+    b_obj: object = cast("object", b)
     if hasattr(a_obj, "__dict__") and hasattr(b_obj, "__dict__"):
         a_mapping = cast("Mapping[str, Any]", a_obj.__dict__)
         b_mapping = cast("Mapping[str, Any]", b_obj.__dict__)
