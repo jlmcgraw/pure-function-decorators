@@ -56,13 +56,13 @@ def test_import_detected_unless_disabled() -> None:
 
         @forbid_global_names()
         def load_module() -> None:  # pyright: ignore[reportUnusedFunction]
-            import math  # noqa: F401
+            import math
 
             del math
 
     @forbid_global_names(include_imports=False)
     def load_module_ok() -> None:
-        import math  # noqa: F401
+        import math
 
         del math
 
