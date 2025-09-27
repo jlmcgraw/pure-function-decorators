@@ -1,10 +1,24 @@
+"""Decorator that rejects functions referencing disallowed global names."""
+
+from __future__ import annotations
+
 import builtins
 import dis
 import types
-from typing import Iterable
+from typing import TYPE_CHECKING, ParamSpec, TypeVar, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+else:  # pragma: no cover
+    import collections.abc as _abc
+
+    Callable = _abc.Callable
+    Iterable = _abc.Iterable
 
 _GLOBAL_OPS = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS = {"IMPORT_NAME"}
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
 
 
 def _collect_global_names(
@@ -12,18 +26,14 @@ def _collect_global_names(
     include_store_delete: bool = True,
     include_imports: bool = True,
 ) -> set[str]:
-    """Recursively collect global-like names referenced by `code` and its nested code objects."""
+    """Recursively collect global-like names referenced by ``code``."""
     ops = {"LOAD_GLOBAL"}
     if include_store_delete:
         ops |= _GLOBAL_OPS - {"LOAD_GLOBAL"}
 
     names: set[str] = set()
     for ins in dis.get_instructions(code):
-        if ins.opname in ops:
-            # LOAD_/STORE_/DELETE_GLOBAL argval is the identifier name
-            names.add(ins.argval)
-        elif include_imports and ins.opname in _IMPORT_OPS:
-            # IMPORT_NAME argval is the module/package name string
+        if ins.opname in ops or (include_imports and ins.opname in _IMPORT_OPS):
             names.add(ins.argval)
 
     for const in code.co_consts:
@@ -33,44 +43,53 @@ def _collect_global_names(
     return names
 
 
+@overload
 def forbid_global_names(
-    _fn=None,
+    fn: Callable[_P, _T],
     *,
     allow: Iterable[str] = (),
     allow_builtins: bool = True,
     include_store_delete: bool = True,
     include_imports: bool = True,
-):
-    """
-    Decorator or decorator factory that rejects functions referencing globals
-    outside an allow-list. Works as `@reject_global_names` or `@reject_global_names(...)`.
+) -> Callable[_P, _T]: ...
 
-    Options:
-      - allow: iterable of names to permit (e.g., constants).
-      - allow_builtins: if True, whitelist all builtins.
-      - include_store_delete: if True, also reject STORE_GLOBAL/DELETE_GLOBAL.
-      - include_imports: if True, treat IMPORT_NAME as a global dependency.
-    """
+
+@overload
+def forbid_global_names(
+    fn: None = None,
+    *,
+    allow: Iterable[str] = (),
+    allow_builtins: bool = True,
+    include_store_delete: bool = True,
+    include_imports: bool = True,
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+
+
+def forbid_global_names(
+    fn: Callable[_P, _T] | None = None,
+    *,
+    allow: Iterable[str] = (),
+    allow_builtins: bool = True,
+    include_store_delete: bool = True,
+    include_imports: bool = True,
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+    """Disallow access to global names outside the provided allow-list."""
     allow_set = set(allow)
     if allow_builtins:
         allow_set |= set(builtins.__dict__.keys())
 
-    def _decorate(fn):
+    def _decorate(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         used = _collect_global_names(
             fn.__code__,
             include_store_delete=include_store_delete,
             include_imports=include_imports,
         )
-        # Allow recursion (function referencing itself by name)
         used.discard(fn.__name__)
-        # Filter against the allow-list
-        bad = sorted(n for n in used if n not in allow_set)
-        if bad:
-            raise RuntimeError(f"Global names referenced: {bad}")
+        disallowed = sorted(name for name in used if name not in allow_set)
+        if disallowed:
+            raise RuntimeError(f"Global names referenced: {disallowed}")
         return fn
 
-    # Support both `@reject_global_names` and `@reject_global_names(...)`
-    if _fn is None:
+    if fn is None:
         return _decorate
-    else:
-        return _decorate(_fn)
+    return _decorate(fn)

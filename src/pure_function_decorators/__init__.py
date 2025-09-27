@@ -1,3 +1,5 @@
+"""Public package surface for the pure-function-decorators project."""
+
 from .detect_immutable import detect_immutable
 from .enforce_deterministic import enforce_deterministic
 from .enforce_immutable import enforce_immutable
@@ -9,7 +11,7 @@ __all__ = [
     "detect_immutable",
     "enforce_deterministic",
     "enforce_immutable",
-    "forbid_globals",
     "forbid_global_names",
+    "forbid_globals",
     "forbid_side_effects",
 ]

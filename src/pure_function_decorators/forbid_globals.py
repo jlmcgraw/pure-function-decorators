@@ -1,37 +1,33 @@
-# Forbid access to module globals during the wrapped call by temporarily
-# stripping the function's globals dict to a minimal whitelist.
-# Not thread-safe across callers of the *same module*; use only in tests.
+"""Temporarily strip globals from a function while it executes."""
+
+from __future__ import annotations
 
 import threading
 from functools import wraps
-from types import FunctionType
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+else:  # pragma: no cover
+    import collections.abc as _abc
+
+    Callable = _abc.Callable
 
 _GLOBAL_GUARD_LOCK = threading.RLock()
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
 
 
-def forbid_globals(*, allow: tuple[str, ...] = ()):
-    """
-    Blocks reads/writes to fn.__globals__ by clearing it during the call.
-    Whitelist names via `allow` (e.g., recursion, constants you explicitly permit).
+def forbid_globals(
+    *, allow: tuple[str, ...] = ()
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
+    """Block reads or writes to ``fn.__globals__`` except for an allow-list."""
 
-    - Always preserves __builtins__.
-    - Adds the function's own name to allow recursion.
-    - Restores the original globals mapping after the call.
-    - Side effect: other code in the same module sees the stripped globals during the call.
-
-    Example:
-        @forbid_globals()
-        def f(x): return x + CONST   # raises NameError (global blocked)
-
-        @forbid_globals(allow=("CONST",))
-        def g(x): return x + CONST   # allowed
-    """
-
-    def decorator(fn: FunctionType):
+    def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         @wraps(fn)
-        def wrapper(*args, **kwargs):
-            g = fn.__globals__
-            snapshot = dict(g)
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            globals_map = fn.__globals__
+            snapshot = dict(globals_map)
             minimal = {
                 "__builtins__": snapshot.get("__builtins__", __builtins__),
                 fn.__name__: fn,
@@ -41,13 +37,13 @@ def forbid_globals(*, allow: tuple[str, ...] = ()):
                     minimal[name] = snapshot[name]
 
             with _GLOBAL_GUARD_LOCK:
-                g.clear()
-                g.update(minimal)
+                globals_map.clear()
+                globals_map.update(minimal)
                 try:
                     return fn(*args, **kwargs)
                 finally:
-                    g.clear()
-                    g.update(snapshot)
+                    globals_map.clear()
+                    globals_map.update(snapshot)
 
         return wrapper
 
