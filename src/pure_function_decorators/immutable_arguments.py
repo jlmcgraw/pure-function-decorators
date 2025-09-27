@@ -1,11 +1,12 @@
-"""Utilities for detecting in-place mutations performed by callables."""
+"""Utilities for preventing in-place mutations performed by callables."""
 # ruff: noqa: ANN401
 
 from __future__ import annotations
 
 import copy
+import logging
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast, overload
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -21,6 +22,10 @@ _Path = tuple[str, ...]
 _Diff = tuple[_Path, str]
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+
+_LOGGER = logging.getLogger(__name__)
+
+__all__ = ["immutable_arguments"]
 
 
 def _describe_collection(items: Iterable[Any]) -> str:
@@ -114,34 +119,72 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
     return None
 
 
-def detect_immutable(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    """Raise ``RuntimeError`` if ``fn`` mutates its arguments in-place."""
+@overload
+def immutable_arguments(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+    ...
 
-    @wraps(fn)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-        memo: dict[int, object] = {}
-        args_snapshot = copy.deepcopy(args, memo)
-        kwargs_snapshot = copy.deepcopy(kwargs, memo)
 
-        result = fn(*args, **kwargs)
+@overload
+def immutable_arguments(
+    *, warn_only: bool = False
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
+    ...
 
-        for index, (original, snapshot) in enumerate(
-            zip(args, args_snapshot, strict=True)
-        ):
-            diff = _first_diff(original, snapshot, path=(f"arg[{index}]",))
-            if diff:
-                diff_path, message = diff
-                joined = "/".join(diff_path)
-                raise RuntimeError(f"Argument mutated at {joined}: {message}")
 
-        for key, original in kwargs.items():
-            snapshot = kwargs_snapshot[key]
-            diff = _first_diff(original, snapshot, path=(f"kwarg[{key!r}]",))
-            if diff:
-                diff_path, message = diff
-                joined = "/".join(diff_path)
-                raise RuntimeError(f"Argument mutated at {joined}: {message}")
+def immutable_arguments(
+    fn: Callable[_P, _T] | None = None, *, warn_only: bool = False
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+    """Prevent and surface in-place mutations performed by ``fn``.
 
-        return result
+    By default the decorator deep-copies all positional and keyword arguments, calls
+    ``fn`` with the copies, and raises ``RuntimeError`` if ``fn`` mutates those
+    arguments. The original caller-provided objects remain untouched. When
+    ``warn_only`` is ``True`` the mutation is logged using the module logger instead
+    of raising.
+    """
 
-    return wrapper
+    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+        @wraps(func)
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            frozen_memo: dict[int, object] = {}
+            frozen_args = copy.deepcopy(args, frozen_memo)
+            frozen_kwargs = copy.deepcopy(kwargs, frozen_memo)
+
+            snapshot_memo: dict[int, object] = {}
+            args_snapshot = copy.deepcopy(frozen_args, snapshot_memo)
+            kwargs_snapshot = copy.deepcopy(frozen_kwargs, snapshot_memo)
+
+            result = func(*frozen_args, **frozen_kwargs)
+
+            for index, (current, snapshot) in enumerate(
+                zip(frozen_args, args_snapshot, strict=True)
+            ):
+                diff = _first_diff(current, snapshot, path=(f"arg[{index}]",))
+                if diff:
+                    diff_path, message = diff
+                    joined = "/".join(diff_path)
+                    text = f"Argument mutated at {joined}: {message}"
+                    if warn_only:
+                        _LOGGER.warning(text)
+                        continue
+                    raise RuntimeError(text)
+
+            for key, current in frozen_kwargs.items():
+                snapshot = kwargs_snapshot[key]
+                diff = _first_diff(current, snapshot, path=(f"kwarg[{key!r}]",))
+                if diff:
+                    diff_path, message = diff
+                    joined = "/".join(diff_path)
+                    text = f"Argument mutated at {joined}: {message}"
+                    if warn_only:
+                        _LOGGER.warning(text)
+                        continue
+                    raise RuntimeError(text)
+
+            return result
+
+        return wrapper
+
+    if fn is not None:
+        return decorator(fn)
+    return decorator
