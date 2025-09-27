@@ -210,7 +210,6 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
 
 def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Reject attempts to perform common side effects while ``fn`` runs."""
-
     if inspect.iscoroutinefunction(fn):
 
         @wraps(fn)

@@ -22,7 +22,6 @@ def _build_minimal_globals(
     fn: Callable[_P, _T], allow: tuple[str, ...]
 ) -> dict[str, object]:
     """Return a globals mapping limited to the provided allow-list."""
-
     source_globals = fn.__globals__
     minimal: dict[str, object] = {
         "__builtins__": source_globals.get("__builtins__", __builtins__),
@@ -43,7 +42,6 @@ def _make_sandboxed(
     fn: Callable[_P, _T], minimal: dict[str, object]
 ) -> Callable[_P, _T]:
     """Create a clone of ``fn`` that uses ``minimal`` as its globals mapping."""
-
     sandboxed = types.FunctionType(
         fn.__code__,
         minimal,

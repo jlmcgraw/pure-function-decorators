@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import pickle
 import threading
-from collections.abc import Awaitable
 from functools import wraps
 from typing import TYPE_CHECKING, ParamSpec, TypeVar, overload
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 else:  # pragma: no cover
     import collections.abc as _abc
 
@@ -95,7 +94,6 @@ def enforce_deterministic(
 
 def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Raise ``ValueError`` if ``fn`` returns different results for the same inputs."""
-
     if asyncio.iscoroutinefunction(fn):
         return _async_wrapper(fn)
 
