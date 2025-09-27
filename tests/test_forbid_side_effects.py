@@ -65,7 +65,7 @@ def test_environ_blocked() -> None:
 def send_warning() -> None:
     import warnings
 
-    warnings.warn("nope")
+    warnings.warn("nope", stacklevel=2)
 
 
 def test_warnings_blocked() -> None:
