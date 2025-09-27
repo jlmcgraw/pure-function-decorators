@@ -25,7 +25,22 @@ _T = TypeVar("_T")
 def _build_minimal_globals(
     fn: Callable[_P, _T], allow: tuple[str, ...]
 ) -> dict[str, object]:
-    """Return a globals mapping limited to the provided allow-list."""
+    """Return a globals mapping limited to the provided allow-list.
+
+    Parameters
+    ----------
+    fn : Callable[_P, _T]
+        The function whose globals should be mirrored.
+    allow : tuple[str, ...]
+        Names that remain accessible to the cloned function.
+
+    Returns
+    -------
+    dict[str, object]
+        A globals dictionary containing only the whitelisted names and
+        essential module metadata.
+    """
+
     source_globals = fn.__globals__
     minimal: dict[str, object] = {
         "__builtins__": source_globals.get("__builtins__", __builtins__),
@@ -45,7 +60,21 @@ def _build_minimal_globals(
 def _make_sandboxed(
     fn: Callable[_P, _T], minimal: dict[str, object]
 ) -> Callable[_P, _T]:
-    """Create a clone of ``fn`` that uses ``minimal`` as its globals mapping."""
+    """Create a clone of ``fn`` that uses ``minimal`` as its globals mapping.
+
+    Parameters
+    ----------
+    fn : Callable[_P, _T]
+        The function to clone with restricted globals.
+    minimal : dict[str, object]
+        The globals dictionary the clone should operate with.
+
+    Returns
+    -------
+    Callable[_P, _T]
+        A function object that executes ``fn``'s code inside the sandbox.
+    """
+
     sandboxed = types.FunctionType(
         fn.__code__,
         minimal,
@@ -67,7 +96,26 @@ def _collect_global_names(
     include_store_delete: bool = True,
     include_imports: bool = True,
 ) -> set[str]:
-    """Recursively collect global-like names referenced by ``code``."""
+    """Recursively collect global-like names referenced by ``code``.
+
+    Parameters
+    ----------
+    code : types.CodeType
+        The code object to analyze.
+    include_store_delete : bool, optional
+        Whether ``STORE_GLOBAL`` and ``DELETE_GLOBAL`` operations should be
+        considered, by default ``True``.
+    include_imports : bool, optional
+        Whether import operations should be treated as global access, by
+        default ``True``.
+
+    Returns
+    -------
+    set[str]
+        All global names referenced by the code object and its nested
+        constants.
+    """
+
     ops = {"LOAD_GLOBAL"}
     if include_store_delete:
         ops |= _GLOBAL_OPS - {"LOAD_GLOBAL"}
@@ -120,7 +168,40 @@ def forbid_globals(
     sandbox: bool = True,
     check_names: bool = False,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
-    """Restrict global access via name checking and/or runtime sandboxing."""
+    """Restrict global access via name checking and/or runtime sandboxing.
+
+    Parameters
+    ----------
+    fn : Callable[_P, _T] | None, optional
+        The function to wrap. When omitted the decorator is returned for
+        later application.
+    allow : Iterable[str], optional
+        Additional global names the wrapped function may reference, by
+        default ``()``.
+    allow_builtins : bool, optional
+        If ``True`` the builtin namespace remains available, by default ``True``.
+    include_store_delete : bool, optional
+        Whether to treat ``STORE_GLOBAL``/``DELETE_GLOBAL`` as violations, by
+        default ``True``.
+    include_imports : bool, optional
+        Whether import opcodes should trigger the name check, by default ``True``.
+    sandbox : bool, optional
+        If ``True`` execute the function with a restricted globals dictionary.
+    check_names : bool, optional
+        When ``True`` statically inspect the function for disallowed names.
+
+    Returns
+    -------
+    Callable
+        Either the decorated function or a decorator awaiting a function,
+        depending on whether ``fn`` was provided.
+
+    Raises
+    ------
+    RuntimeError
+        If ``check_names`` is enabled and a disallowed global is detected.
+    """
+
     allowed_tuple = tuple(allow)
     allowed_set = set(allowed_tuple)
     if check_names and allow_builtins:
