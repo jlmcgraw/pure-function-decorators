@@ -23,7 +23,7 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import TYPE_CHECKING, NoReturn, ParamSpec, TypeVar, override
+from typing import TYPE_CHECKING, Awaitable, NoReturn, ParamSpec, TypeVar, cast, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -34,6 +34,7 @@ else:  # pragma: no cover
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+_AwaitedT = TypeVar("_AwaitedT")
 
 
 class _HybridRLock:
@@ -211,17 +212,18 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
 def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Reject attempts to perform common side effects while ``fn`` runs."""
     if inspect.iscoroutinefunction(fn):
+        async_fn = cast(Callable[_P, Awaitable[_AwaitedT]], fn)
 
         @wraps(fn)
-        async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _AwaitedT:
             async with _SIDE_EFFECT_LOCK:
                 patches = _apply_patches()
                 try:
-                    return await fn(*args, **kwargs)
+                    return await async_fn(*args, **kwargs)
                 finally:
                     _restore(patches)
 
-        return async_wrapper
+        return cast(Callable[_P, _T], async_wrapper)
 
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
