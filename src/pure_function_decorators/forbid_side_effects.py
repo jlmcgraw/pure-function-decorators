@@ -40,21 +40,43 @@ class _HybridRLock:
     """Lock usable as both sync and async context manager."""
 
     def __init__(self) -> None:
+        """Initialize the underlying re-entrant lock."""
+
         self._lock: threading.RLock = threading.RLock()
 
     def __enter__(self) -> _HybridRLock:
+        """Acquire the lock for use in a synchronous ``with`` block.
+
+        Returns
+        -------
+        _HybridRLock
+            The lock instance, matching the context manager protocol.
+        """
+
         self._lock.acquire()
         return self
 
     def __exit__(self, *_exc: object) -> None:
+        """Release the lock on exit from a synchronous ``with`` block."""
+
         self._lock.release()
 
     async def __aenter__(self) -> _HybridRLock:
+        """Acquire the lock for use in an ``async with`` block.
+
+        Returns
+        -------
+        _HybridRLock
+            The lock instance, matching the async context manager protocol.
+        """
+
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._lock.acquire)
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
+        """Release the lock on exit from an ``async with`` block."""
+
         self._lock.release()
 
 
@@ -62,7 +84,18 @@ _SIDE_EFFECT_LOCK = _HybridRLock()
 
 
 def _trap(name: str) -> Callable[..., NoReturn]:
-    """Return a callable that raises ``RuntimeError`` when invoked."""
+    """Return a callable that raises ``RuntimeError`` when invoked.
+
+    Parameters
+    ----------
+    name : str
+        Human-readable description of the blocked operation.
+
+    Returns
+    -------
+    Callable[..., NoReturn]
+        A function that raises ``RuntimeError`` whenever it is called.
+    """
 
     def _raiser(*_args: object, **_kwargs: object) -> NoReturn:
         raise RuntimeError(f"Side effect blocked: {name}")
@@ -74,6 +107,8 @@ class _TrapStdIO:
     """File-like object that rejects writes to stdout/stderr."""
 
     def write(self, *_args: object, **_kwargs: object) -> NoReturn:
+        """Prevent writes by raising ``RuntimeError``."""
+
         raise RuntimeError("Side effect blocked: stdio write")
 
     def flush(self) -> None:
@@ -82,6 +117,14 @@ class _TrapStdIO:
 
 
 def _apply_patches() -> list[tuple[object, str, object]]:
+    """Monkeypatch common side-effect primitives with trapping functions.
+
+    Returns
+    -------
+    list[tuple[object, str, object]]
+        Triples describing each patch so it can be undone later.
+    """
+
     patches: list[tuple[object, str, object]] = []
 
     def patch(obj: object, attr: str, repl: object) -> None:
@@ -112,16 +155,22 @@ def _apply_patches() -> list[tuple[object, str, object]]:
         @override
         @classmethod
         def now(cls, *_args: object, **_kwargs: object) -> NoReturn:
+            """Prevent access to :meth:`datetime.datetime.now`."""
+
             raise RuntimeError("Side effect blocked: datetime.now")
 
         @override
         @classmethod
         def utcnow(cls, *_args: object, **_kwargs: object) -> NoReturn:
+            """Prevent access to :meth:`datetime.datetime.utcnow`."""
+
             raise RuntimeError("Side effect blocked: datetime.utcnow")
 
         @override
         @classmethod
         def today(cls, *_args: object, **_kwargs: object) -> NoReturn:
+            """Prevent access to :meth:`datetime.datetime.today`."""
+
             raise RuntimeError("Side effect blocked: datetime.today")
 
     patch(datetime, "datetime", _TrapDateTime)
@@ -131,18 +180,26 @@ def _apply_patches() -> list[tuple[object, str, object]]:
     class _TrapEnviron(dict[str, object]):
         @override
         def __getitem__(self, _key: str) -> NoReturn:
+            """Reject environment lookups performed during the call."""
+
             raise RuntimeError("Side effect blocked: os.environ[] read")
 
         @override
         def __setitem__(self, _key: str, _value: object) -> NoReturn:
+            """Reject environment mutations performed during the call."""
+
             raise RuntimeError("Side effect blocked: os.environ[] write")
 
         @override
         def get(self, _key: str, _default: object | None = None) -> NoReturn:
+            """Reject environment reads using ``dict.get`` semantics."""
+
             raise RuntimeError("Side effect blocked: os.environ.get")
 
         @override
         def __delitem__(self, _key: str) -> NoReturn:
+            """Reject deletions from the environment mapping."""
+
             raise RuntimeError("Side effect blocked: os.environ del")
 
     patch(os, "environ", _TrapEnviron())
@@ -204,12 +261,32 @@ def _apply_patches() -> list[tuple[object, str, object]]:
 
 
 def _restore(patches: list[tuple[object, str, object]]) -> None:
+    """Revert previously applied monkeypatches.
+
+    Parameters
+    ----------
+    patches : list[tuple[object, str, object]]
+        Patch descriptors returned by :func:`_apply_patches`.
+    """
+
     for obj, attr, original in reversed(patches):
         setattr(obj, attr, original)
 
 
 def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    """Reject attempts to perform common side effects while ``fn`` runs."""
+    """Reject attempts to perform common side effects while ``fn`` runs.
+
+    Parameters
+    ----------
+    fn : Callable[_P, _T]
+        The synchronous or asynchronous callable to wrap.
+
+    Returns
+    -------
+    Callable[_P, _T]
+        A wrapper that raises ``RuntimeError`` when patched primitives are
+        accessed during execution of ``fn``.
+    """
     if inspect.iscoroutinefunction(fn):
         async_fn = cast("Callable[_P, Awaitable[object]]", fn)
 

@@ -29,12 +29,43 @@ __all__ = ["immutable_arguments"]
 
 
 def _describe_collection(items: Iterable[Any]) -> str:
+    """Return a deterministic description of the provided collection.
+
+    Parameters
+    ----------
+    items : Iterable[Any]
+        Items whose representations should be summarized.
+
+    Returns
+    -------
+    str
+        A human-readable summary of the iterable contents.
+    """
+
     return "[" + ", ".join(sorted(repr(item) for item in items)) + "]"
 
 
 def _compare_sequence(
     seq_a: Sequence[Any], seq_b: Sequence[Any], path: _Path
 ) -> _Diff | None:
+    """Compare two sequences and return the first detected mutation.
+
+    Parameters
+    ----------
+    seq_a : Sequence[Any]
+        The sequence captured in the snapshot prior to invoking the function.
+    seq_b : Sequence[Any]
+        The sequence observed after the function executed.
+    path : _Path
+        The navigation path used for diagnostic messages.
+
+    Returns
+    -------
+    _Diff | None
+        ``None`` if the sequences are identical, otherwise the path and
+        description of the first difference encountered.
+    """
+
     if len(seq_a) != len(seq_b):
         return (*path, "<len>"), f"{len(seq_a)} -> {len(seq_b)}"
     for index, (left, right) in enumerate(zip(seq_a, seq_b, strict=True)):
@@ -45,7 +76,24 @@ def _compare_sequence(
 
 
 def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
-    """Return the first difference between ``a`` and ``b`` (if any)."""
+    """Return the first difference between ``a`` and ``b`` (if any).
+
+    Parameters
+    ----------
+    a : Any
+        The value observed after the wrapped function executed.
+    b : Any
+        The snapshot of the value prior to function execution.
+    path : _Path, optional
+        The hierarchical path used to build informative error messages,
+        by default ``()``.
+
+    Returns
+    -------
+    _Diff | None
+        ``None`` if no mutation is detected, otherwise the path segment and
+        description of the detected change.
+    """
     if type(a) is not type(b):
         return path, f"type {type(a).__name__} -> {type(b).__name__}"
 
@@ -134,11 +182,26 @@ def immutable_arguments(
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
     """Prevent and surface in-place mutations performed by ``fn``.
 
-    By default the decorator deep-copies all positional and keyword arguments, calls
-    ``fn`` with the copies, and raises ``RuntimeError`` if ``fn`` mutates those
-    arguments. The original caller-provided objects remain untouched. When
-    ``warn_only`` is ``True`` the mutation is logged using the module logger instead
-    of raising.
+    Parameters
+    ----------
+    fn : Callable[_P, _T] | None, optional
+        The function to decorate. When omitted, the decorator is returned
+        for deferred application.
+    warn_only : bool, optional
+        If ``True`` log detected mutations instead of raising
+        ``RuntimeError``.
+
+    Returns
+    -------
+    Callable
+        Either the decorated function or a decorator awaiting a function,
+        depending on whether ``fn`` was provided.
+
+    Notes
+    -----
+    The decorator deep-copies all positional and keyword arguments, invokes
+    ``fn`` with the copies, and compares the copies against further snapshots.
+    Any mutation is surfaced according to ``warn_only``.
     """
 
     def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:

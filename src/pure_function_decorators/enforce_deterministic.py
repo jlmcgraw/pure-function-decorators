@@ -25,12 +25,40 @@ _MISSING = object()
 def _pickle_args(
     *args: object, **kwargs: object
 ) -> bytes:  # pragma: no cover - tiny helper
+    """Serialize positional and keyword arguments into a cache key.
+
+    Parameters
+    ----------
+    *args : object
+        Positional arguments supplied to the decorated callable.
+    **kwargs : object
+        Keyword arguments supplied to the decorated callable.
+
+    Returns
+    -------
+    bytes
+        A pickle representation that can be used as a dictionary key.
+    """
+
     return pickle.dumps((args, kwargs))
 
 
 def _sync_wrapper(
     fn: Callable[_P, _T],
 ) -> Callable[_P, _T]:
+    """Wrap ``fn`` with deterministic-result enforcement for sync callables.
+
+    Parameters
+    ----------
+    fn : Callable[_P, _T]
+        The synchronous callable whose outputs should remain stable.
+
+    Returns
+    -------
+    Callable[_P, _T]
+        A wrapped callable that caches results and raises on divergence.
+    """
+
     cache: dict[bytes, _T] = {}
     lock = threading.RLock()
 
@@ -57,6 +85,19 @@ def _sync_wrapper(
 def _async_wrapper(
     fn: Callable[_P, Awaitable[_AwaitedT]],
 ) -> Callable[_P, Awaitable[_AwaitedT]]:
+    """Wrap ``fn`` with deterministic-result enforcement for async callables.
+
+    Parameters
+    ----------
+    fn : Callable[_P, Awaitable[_AwaitedT]]
+        The asynchronous callable whose awaited results must not vary.
+
+    Returns
+    -------
+    Callable[_P, Awaitable[_AwaitedT]]
+        A wrapped coroutine function that caches and validates outcomes.
+    """
+
     cache: dict[bytes, _AwaitedT] = {}
     lock = asyncio.Lock()
 
@@ -81,7 +122,21 @@ def _async_wrapper(
 
 
 def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    """Raise ``ValueError`` if ``fn`` returns different results for the same inputs."""
+    """Ensure the callable always returns the same value for identical inputs.
+
+    Parameters
+    ----------
+    fn : Callable[_P, _T]
+        The synchronous or asynchronous callable to wrap.
+
+    Returns
+    -------
+    Callable[_P, _T]
+        A wrapper that caches results per argument signature and raises
+        ``ValueError`` if a subsequent invocation produces a different
+        outcome.
+    """
+
     if asyncio.iscoroutinefunction(fn):
         async_fn = cast("Callable[_P, Awaitable[object]]", fn)
         wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(async_fn)
