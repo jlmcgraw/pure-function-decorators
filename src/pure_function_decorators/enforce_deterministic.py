@@ -81,14 +81,14 @@ def _async_wrapper(
 
 @overload
 def enforce_deterministic(
-    fn: Callable[_P, _T]
+    fn: Callable[_P, _T],
 ) -> Callable[_P, _T]:  # pragma: no cover - typing overload
     ...
 
 
 @overload
 def enforce_deterministic(
-    fn: Callable[_P, Awaitable[_T]]
+    fn: Callable[_P, Awaitable[_T]],
 ) -> Callable[_P, Awaitable[_T]]:  # pragma: no cover - typing overload
     ...
 

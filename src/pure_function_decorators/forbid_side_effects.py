@@ -80,6 +80,7 @@ class _TrapStdIO:
         """Provide a harmless flush implementation for callers that expect one."""
         return None
 
+
 def _apply_patches() -> list[tuple[object, str, object]]:
     patches: list[tuple[object, str, object]] = []
 

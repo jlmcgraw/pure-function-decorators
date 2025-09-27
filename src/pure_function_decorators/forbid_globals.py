@@ -66,7 +66,6 @@ def forbid_globals(
     """Block reads or writes to ``fn.__globals__`` except for an allow-list."""
 
     def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-
         if inspect.iscoroutinefunction(fn):
 
             @wraps(fn)
