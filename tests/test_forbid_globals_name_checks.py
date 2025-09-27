@@ -1,5 +1,5 @@
 import pytest
-from pure_function_decorators import forbid_global_names
+from pure_function_decorators import forbid_globals
 
 CONST = 10
 counter = 0
@@ -8,13 +8,13 @@ counter = 0
 def test_rejects_at_decoration_time() -> None:
     with pytest.raises(RuntimeError):
 
-        @forbid_global_names()
+        @forbid_globals(check_names=True, sandbox=False)
         def bad(x: int) -> int:  # pyright: ignore[reportUnusedFunction]
             return x + CONST  # triggers
 
 
 def test_allows_when_in_allow_list() -> None:
-    @forbid_global_names(allow=("CONST",))
+    @forbid_globals(allow=("CONST",), check_names=True, sandbox=False)
     def ok(x: int) -> int:
         return x + CONST
 
@@ -22,7 +22,7 @@ def test_allows_when_in_allow_list() -> None:
 
 
 def test_works_without_parentheses() -> None:
-    @forbid_global_names
+    @forbid_globals
     def pure(x: int) -> int:
         return x * 2
 
@@ -32,7 +32,7 @@ def test_works_without_parentheses() -> None:
 def test_rejects_builtin_when_disabled() -> None:
     with pytest.raises(RuntimeError):
 
-        @forbid_global_names(allow_builtins=False)
+        @forbid_globals(allow_builtins=False, check_names=True, sandbox=False)
         def use_len(seq: list[int]) -> int:  # pyright: ignore[reportUnusedFunction]
             return len(seq)
 
@@ -40,7 +40,7 @@ def test_rejects_builtin_when_disabled() -> None:
 def test_store_global_permitted_when_configured() -> None:
     global counter
 
-    @forbid_global_names(include_store_delete=False)
+    @forbid_globals(check_names=True, sandbox=False, include_store_delete=False)
     def increment_counter() -> int:
         global counter
         counter = 5
@@ -54,13 +54,13 @@ def test_store_global_permitted_when_configured() -> None:
 def test_import_detected_unless_disabled() -> None:
     with pytest.raises(RuntimeError):
 
-        @forbid_global_names()
+        @forbid_globals(check_names=True, sandbox=False)
         def load_module() -> None:  # pyright: ignore[reportUnusedFunction]
             import math
 
             del math
 
-    @forbid_global_names(include_imports=False)
+    @forbid_globals(check_names=True, sandbox=False, include_imports=False)
     def load_module_ok() -> None:
         import math
 

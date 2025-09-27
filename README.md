@@ -22,19 +22,18 @@ pip install pure-function-decorators
 ```python
 from pure_function_decorators import (
     enforce_deterministic,
-    forbid_global_names,
     forbid_globals,
     forbid_side_effects,
     immutable_arguments,
 )
 
 
-@forbid_global_names()
+@forbid_globals()
 def bad(x):
-    return x + CONST  
+    return x + CONST
 
 CONST = 10
-bad(1)   # Raises RuntimeError
+bad(1)   # Raises NameError
 ```
 
 ## Documentation
@@ -48,8 +47,9 @@ The complete documentation can be found at the
 
 - `immutable_arguments` deep-copies inputs before invoking the wrapped callable so callers never observe in-place mutations. By default the decorator raises when a mutation is detected, and it can instead log warnings with `warn_only=True`.
 - `enforce_deterministic` reruns a function and compares its results so you can gate functions that rely on deterministic behavior.
-- `forbid_global_names` blocks lookups of configured globals during function execution to make dependencies explicit.
-- `forbid_globals` prevents a function from reading or mutating module-level state entirely.
+- `forbid_globals` prevents a function from reading or mutating module-level state by sandboxing its globals. Pass
+  `check_names=True` to also fail decoration when bytecode references globals outside the allow-list, or set
+  `sandbox=False` to keep only the bytecode-based validation.
 - `forbid_side_effects` instruments builtin operations that commonly mutate process state (e.g. file writes, subprocess launches) to surface accidental side effects.
 
 ## Future purity checks to explore

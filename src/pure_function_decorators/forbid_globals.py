@@ -1,11 +1,13 @@
-"""Temporarily strip globals from a function while it executes."""
+"""Utilities to forbid access to globals by name or at runtime."""
 
 from __future__ import annotations
 
+import builtins
+import dis
 import inspect
 import types
 from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Iterable, ParamSpec, TypeVar, overload, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -14,6 +16,8 @@ else:  # pragma: no cover
 
     Callable = _abc.Callable
 
+_GLOBAL_OPS = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
+_IMPORT_OPS = {"IMPORT_NAME"}
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
@@ -58,19 +62,93 @@ def _make_sandboxed(
     return sandboxed
 
 
+def _collect_global_names(
+    code: types.CodeType,
+    include_store_delete: bool = True,
+    include_imports: bool = True,
+) -> set[str]:
+    """Recursively collect global-like names referenced by ``code``."""
+    ops = {"LOAD_GLOBAL"}
+    if include_store_delete:
+        ops |= _GLOBAL_OPS - {"LOAD_GLOBAL"}
+
+    names: set[str] = set()
+    for ins in dis.get_instructions(code):
+        if ins.opname in ops or (include_imports and ins.opname in _IMPORT_OPS):
+            names.add(ins.argval)
+
+    for const in code.co_consts:
+        if isinstance(const, types.CodeType):
+            names |= _collect_global_names(const, include_store_delete, include_imports)
+
+    return names
+
+
+@overload
 def forbid_globals(
-    *, allow: tuple[str, ...] = ()
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
-    """Block reads or writes to ``fn.__globals__`` except for an allow-list."""
+    fn: Callable[_P, _T],
+    *,
+    allow: Iterable[str] = (),
+    allow_builtins: bool = True,
+    include_store_delete: bool = True,
+    include_imports: bool = True,
+    sandbox: bool = True,
+    check_names: bool = False,
+) -> Callable[_P, _T]: ...
+
+
+@overload
+def forbid_globals(
+    fn: None = None,
+    *,
+    allow: Iterable[str] = (),
+    allow_builtins: bool = True,
+    include_store_delete: bool = True,
+    include_imports: bool = True,
+    sandbox: bool = True,
+    check_names: bool = False,
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+
+
+def forbid_globals(
+    fn: Callable[_P, _T] | None = None,
+    *,
+    allow: Iterable[str] = (),
+    allow_builtins: bool = True,
+    include_store_delete: bool = True,
+    include_imports: bool = True,
+    sandbox: bool = True,
+    check_names: bool = False,
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+    """Restrict global access via name checking and/or runtime sandboxing."""
+
+    allowed_tuple = tuple(allow)
+    allowed_set = set(allowed_tuple)
+    if check_names and allow_builtins:
+        allowed_set |= set(builtins.__dict__.keys())
 
     def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+        if check_names:
+            used = _collect_global_names(
+                fn.__code__,
+                include_store_delete=include_store_delete,
+                include_imports=include_imports,
+            )
+            used.discard(fn.__name__)
+            disallowed = sorted(name for name in used if name not in allowed_set)
+            if disallowed:
+                raise RuntimeError(f"Global names referenced: {disallowed}")
+
+        if not sandbox:
+            return fn
+
         if inspect.iscoroutinefunction(fn):
             async_fn = cast("Callable[_P, Awaitable[object]]", fn)
 
             @wraps(fn)
             async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
                 sandboxed = _make_sandboxed(
-                    async_fn, _build_minimal_globals(async_fn, allow)
+                    async_fn, _build_minimal_globals(async_fn, allowed_tuple)
                 )
                 return await sandboxed(*args, **kwargs)
 
@@ -78,9 +156,11 @@ def forbid_globals(
 
         @wraps(fn)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            sandboxed = _make_sandboxed(fn, _build_minimal_globals(fn, allow))
+            sandboxed = _make_sandboxed(fn, _build_minimal_globals(fn, allowed_tuple))
             return sandboxed(*args, **kwargs)
 
         return wrapper
 
-    return decorator
+    if fn is None:
+        return decorator
+    return decorator(fn)
