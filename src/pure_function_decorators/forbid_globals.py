@@ -65,7 +65,7 @@ def forbid_globals(
 
     def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         if inspect.iscoroutinefunction(fn):
-            async_fn = cast(Callable[_P, Awaitable[object]], fn)
+            async_fn = cast("Callable[_P, Awaitable[object]]", fn)
 
             @wraps(fn)
             async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
@@ -74,7 +74,7 @@ def forbid_globals(
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast(Callable[_P, _T], async_wrapper)
+            return cast("Callable[_P, _T]", async_wrapper)
 
         @wraps(fn)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:

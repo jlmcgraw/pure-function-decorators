@@ -211,7 +211,7 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
 def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Reject attempts to perform common side effects while ``fn`` runs."""
     if inspect.iscoroutinefunction(fn):
-        async_fn = cast(Callable[_P, Awaitable[object]], fn)
+        async_fn = cast("Callable[_P, Awaitable[object]]", fn)
 
         @wraps(fn)
         async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
@@ -222,7 +222,7 @@ def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
                 finally:
                     _restore(patches)
 
-        return cast(Callable[_P, _T], async_wrapper)
+        return cast("Callable[_P, _T]", async_wrapper)
 
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:

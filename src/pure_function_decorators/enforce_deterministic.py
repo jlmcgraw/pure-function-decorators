@@ -83,8 +83,8 @@ def _async_wrapper(
 def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Raise ``ValueError`` if ``fn`` returns different results for the same inputs."""
     if asyncio.iscoroutinefunction(fn):
-        async_fn = cast(Callable[_P, Awaitable[object]], fn)
+        async_fn = cast("Callable[_P, Awaitable[object]]", fn)
         wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(async_fn)
-        return cast(Callable[_P, _T], wrapped)
+        return cast("Callable[_P, _T]", wrapped)
 
     return _sync_wrapper(fn)
