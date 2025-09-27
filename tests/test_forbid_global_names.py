@@ -2,7 +2,7 @@ import pytest
 from pure_function_decorators import forbid_global_names
 
 CONST = 10
-COUNTER = 0
+counter = 0
 
 
 def test_rejects_at_decoration_time() -> None:
@@ -38,17 +38,17 @@ def test_rejects_builtin_when_disabled() -> None:
 
 
 def test_store_global_permitted_when_configured() -> None:
-    global COUNTER
+    global counter
 
     @forbid_global_names(include_store_delete=False)
     def increment_counter() -> int:
-        global COUNTER
-        COUNTER = 5
+        global counter
+        counter = 5
         return 5
 
     assert increment_counter() == 5
-    assert COUNTER == 5
-    COUNTER = 0
+    assert counter == 5
+    counter = 0
 
 
 def test_import_detected_unless_disabled() -> None:
@@ -58,8 +58,12 @@ def test_import_detected_unless_disabled() -> None:
         def load_module() -> None:  # pyright: ignore[reportUnusedFunction]
             import math  # noqa: F401
 
+            del math
+
     @forbid_global_names(include_imports=False)
     def load_module_ok() -> None:
         import math  # noqa: F401
+
+        del math
 
     load_module_ok()
