@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from pure_function_decorators import forbid_globals
 
@@ -45,3 +47,28 @@ def test_allowed_globals_persist() -> None:
     mutate_allowed()
     assert STATE == {"value": 100}
     STATE["value"] = 0
+
+
+@forbid_globals()
+async def async_uses_const(x: int) -> int:
+    return x + CONST
+
+
+def test_async_globals_blocked() -> None:
+    async def runner() -> None:
+        with pytest.raises(NameError):
+            await async_uses_const(1)
+
+    asyncio.run(runner())
+
+
+@forbid_globals(allow=("CONST",))
+async def async_uses_const_ok(x: int) -> int:
+    return x + CONST
+
+
+def test_async_globals_allowed() -> None:
+    async def runner() -> None:
+        assert await async_uses_const_ok(3) == 8
+
+    asyncio.run(runner())

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import pickle
+import threading
 
 import pytest
 from pure_function_decorators import enforce_deterministic
@@ -50,3 +52,88 @@ def echo(obj: object) -> object:
 def test_unpickleable_arguments_raise() -> None:
     with pytest.raises((pickle.PicklingError, AttributeError, TypeError)):
         echo(lambda: None)
+
+
+@enforce_deterministic
+async def async_add(x: int, y: int) -> int:
+    await asyncio.sleep(0)
+    return x + y
+
+
+def test_async_deterministic_values_allowed() -> None:
+    async def runner() -> None:
+        first, second = await asyncio.gather(async_add(2, 3), async_add(2, 3))
+        assert first == second == 5
+
+    asyncio.run(runner())
+
+
+async_state = {"value": 0}
+
+
+@enforce_deterministic
+async def async_bump() -> int:
+    async_state["value"] += 1
+    await asyncio.sleep(0)
+    return async_state["value"]
+
+
+def test_async_nondeterministic_values_rejected() -> None:
+    async def runner() -> None:
+        assert await async_bump() == 1
+        with pytest.raises(ValueError):
+            await async_bump()
+
+    asyncio.run(runner())
+    async_state["value"] = 0
+
+
+@enforce_deterministic
+def thread_safe_add(x: int, y: int) -> int:
+    return x + y
+
+
+def test_threaded_deterministic_values_allowed() -> None:
+    results: list[int] = []
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            results.append(thread_safe_add(4, 5))
+        except BaseException as exc:  # pragma: no cover - defensive
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(10)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert results == [9] * 10
+
+
+def test_threaded_nondeterministic_values_rejected() -> None:
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+    results: list[int] = []
+
+    @enforce_deterministic
+    def thread_identity() -> int:
+        barrier.wait()
+        return threading.get_ident()
+
+    def worker() -> None:
+        try:
+            results.append(thread_identity())
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert any(isinstance(err, ValueError) for err in errors)
+    assert len(results) + len(errors) == 2
