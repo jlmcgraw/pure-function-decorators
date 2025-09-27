@@ -22,10 +22,10 @@ pip install pure-function-decorators
 ```python
 from pure_function_decorators import (
     enforce_deterministic,
-    enforce_immutable,
     forbid_global_names,
     forbid_globals,
     forbid_side_effects,
+    immutable_arguments,
 )
 
 
@@ -46,8 +46,7 @@ The complete documentation can be found at the
 
 ## Existing decorators
 
-- `detect_immutable` inspects arguments and return values to highlight mutable data structures before they leak into a code path that expects purity.
-- `enforce_immutable` validates at runtime that inputs and outputs stay immutable, raising when mutable objects slip through.
+- `immutable_arguments` deep-copies inputs before invoking the wrapped callable so callers never observe in-place mutations. By default the decorator raises when a mutation is detected, and it can instead log warnings with `warn_only=True`.
 - `enforce_deterministic` reruns a function and compares its results so you can gate functions that rely on deterministic behavior.
 - `forbid_global_names` blocks lookups of configured globals during function execution to make dependencies explicit.
 - `forbid_globals` prevents a function from reading or mutating module-level state entirely.
