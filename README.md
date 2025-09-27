@@ -69,3 +69,7 @@ These ideas could live alongside the existing decorators as optional opt-in guar
 ### Can these decorators be enabled globally, like `perl`'s `strict` pragma?
 
 No. Python does not provide a hook that automatically wraps every function that is imported or defined after a module loads. The decorators in this project operate by returning a new callable, so each target function (or method) has to be wrapped explicitly. You can build your own helpers that iterate over a module or class and decorate selected callables, but the library cannot apply itself universally without the caller opting in on a per-function basis.
+
+### What about leaning on the descriptor protocol to auto-wrap methods?
+
+Descriptors only help when attribute access goes through a class that you control, and Python already turns functions defined on a class into descriptors that bind methods at lookup time. Swapping in a custom descriptor still requires you to opt in for each attribute you expose, and it cannot cover free functions or methods defined on classes outside your control. You could build a metaclass or `__setattr__` hook that decorates attributes as they are assigned, but that still imposes an explicit opt-in boundary (the metaclass or base class) rather than letting a library blanket the entire interpreter.
