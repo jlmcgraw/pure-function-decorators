@@ -23,10 +23,17 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import TYPE_CHECKING, Awaitable, NoReturn, ParamSpec, TypeVar, cast, override
+from typing import (
+    TYPE_CHECKING,
+    NoReturn,
+    ParamSpec,
+    TypeVar,
+    cast,
+    override,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 else:  # pragma: no cover
     import collections.abc as _abc
 
@@ -212,7 +219,7 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
 def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Reject attempts to perform common side effects while ``fn`` runs."""
     if inspect.iscoroutinefunction(fn):
-        async_fn = cast(Callable[_P, Awaitable[_AwaitedT]], fn)
+        async_fn = cast("Callable[_P, Awaitable[_AwaitedT]]", fn)
 
         @wraps(fn)
         async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _AwaitedT:
@@ -223,7 +230,7 @@ def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
                 finally:
                     _restore(patches)
 
-        return cast(Callable[_P, _T], async_wrapper)
+        return cast("Callable[_P, _T]", async_wrapper)
 
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:

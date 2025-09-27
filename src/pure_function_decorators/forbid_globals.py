@@ -5,10 +5,10 @@ from __future__ import annotations
 import inspect
 import types
 from functools import wraps
-from typing import TYPE_CHECKING, Awaitable, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 else:  # pragma: no cover
     import collections.abc as _abc
 
@@ -66,17 +66,17 @@ def forbid_globals(
 
     def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         if inspect.iscoroutinefunction(fn):
-            async_fn = cast(Callable[_P, Awaitable[_AwaitedT]], fn)
+            async_fn = cast("Callable[_P, Awaitable[_AwaitedT]]", fn)
 
             @wraps(fn)
             async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _AwaitedT:
                 sandboxed = cast(
-                    Callable[_P, Awaitable[_AwaitedT]],
+                    "Callable[_P, Awaitable[_AwaitedT]]",
                     _make_sandboxed(async_fn, _build_minimal_globals(async_fn, allow)),
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast(Callable[_P, _T], async_wrapper)
+            return cast("Callable[_P, _T]", async_wrapper)
 
         @wraps(fn)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
