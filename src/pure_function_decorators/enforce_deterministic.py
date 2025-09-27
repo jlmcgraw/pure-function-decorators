@@ -7,7 +7,7 @@ import pickle
 import threading
 from collections.abc import Awaitable
 from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast, overload
+from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -80,25 +80,11 @@ def _async_wrapper(
     return wrapper
 
 
-@overload
-def enforce_deterministic(
-    fn: Callable[_P, _T],
-) -> Callable[_P, _T]:  # pragma: no cover - typing overload
-    ...
-
-
-@overload
-def enforce_deterministic(
-    fn: Callable[_P, Awaitable[_T]],
-) -> Callable[_P, Awaitable[_T]]:  # pragma: no cover - typing overload
-    ...
-
-
 def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Raise ``ValueError`` if ``fn`` returns different results for the same inputs."""
     if asyncio.iscoroutinefunction(fn):
-        async_fn = cast("Callable[_P, Awaitable[_AwaitedT]]", fn)
-        wrapped: Callable[_P, Awaitable[_AwaitedT]] = _async_wrapper(async_fn)
-        return cast("Callable[_P, _T]", wrapped)
+        async_fn = cast(Callable[_P, Awaitable[object]], fn)
+        wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(async_fn)
+        return cast(Callable[_P, _T], wrapped)
 
     return _sync_wrapper(fn)
