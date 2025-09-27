@@ -63,3 +63,9 @@ The current decorators focus on globals, determinism, and structural immutabilit
 - **Dependency purity enforcement** &mdash; verify that functions only call other decorated or safelisted pure functions by walking the bytecode or AST.
 
 These ideas could live alongside the existing decorators as optional opt-in guards so projects can combine them to match their definition of purity.
+
+## Frequently asked questions
+
+### Can these decorators be enabled globally, like `perl`'s `strict` pragma?
+
+No. Python does not provide a hook that automatically wraps every function that is imported or defined after a module loads. The decorators in this project operate by returning a new callable, so each target function (or method) has to be wrapped explicitly. You can build your own helpers that iterate over a module or class and decorate selected callables, but the library cannot apply itself universally without the caller opting in on a per-function basis.
