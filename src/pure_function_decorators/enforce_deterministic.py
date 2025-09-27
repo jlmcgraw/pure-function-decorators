@@ -23,7 +23,7 @@ _MISSING = object()
 
 
 def _pickle_args(
-    *args: _P.args, **kwargs: _P.kwargs
+    *args: object, **kwargs: object
 ) -> bytes:  # pragma: no cover - tiny helper
     return pickle.dumps((args, kwargs))
 
@@ -98,7 +98,7 @@ def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Raise ``ValueError`` if ``fn`` returns different results for the same inputs."""
     if asyncio.iscoroutinefunction(fn):
         async_fn = cast("Callable[_P, Awaitable[_AwaitedT]]", fn)
-        wrapped = _async_wrapper(async_fn)
+        wrapped: Callable[_P, Awaitable[_AwaitedT]] = _async_wrapper(async_fn)
         return cast("Callable[_P, _T]", wrapped)
 
     return _sync_wrapper(fn)
