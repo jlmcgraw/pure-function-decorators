@@ -3,7 +3,6 @@ from __future__ import annotations
 import pickle
 
 import pytest
-
 from pure_function_decorators import enforce_deterministic
 
 

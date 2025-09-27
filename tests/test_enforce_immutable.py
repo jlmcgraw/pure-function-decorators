@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 
 from pure_function_decorators import enforce_immutable
 
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
 
 @enforce_immutable
 def touch_list(a: list[int]) -> int:

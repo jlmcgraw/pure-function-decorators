@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import pytest
 from pure_function_decorators import detect_immutable
 
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
