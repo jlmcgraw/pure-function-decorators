@@ -120,15 +120,13 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
 
 
 @overload
-def immutable_arguments(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    ...
+def immutable_arguments(fn: Callable[_P, _T]) -> Callable[_P, _T]: ...
 
 
 @overload
 def immutable_arguments(
     *, warn_only: bool = False
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
-    ...
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
 
 
 def immutable_arguments(

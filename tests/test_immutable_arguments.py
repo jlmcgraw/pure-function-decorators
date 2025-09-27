@@ -92,7 +92,9 @@ def test_warn_only_returns_mutated_values(caplog: pytest.LogCaptureFixture) -> N
     caplog.set_level("WARNING")
 
     @immutable_arguments(warn_only=True)
-    def mutate_args(target: list[int], *, payload: Payload) -> tuple[list[int], list[int]]:
+    def mutate_args(
+        target: list[int], *, payload: Payload
+    ) -> tuple[list[int], list[int]]:
         target.append(99)
         payload.numbers.append(42)
         return target, payload.numbers

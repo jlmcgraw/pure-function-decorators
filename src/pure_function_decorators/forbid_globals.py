@@ -7,10 +7,10 @@ import dis
 import inspect
 import types
 from functools import wraps
-from typing import TYPE_CHECKING, Iterable, ParamSpec, TypeVar, overload, cast
+from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast, overload
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Iterable
 else:  # pragma: no cover
     import collections.abc as _abc
 
@@ -121,7 +121,6 @@ def forbid_globals(
     check_names: bool = False,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
     """Restrict global access via name checking and/or runtime sandboxing."""
-
     allowed_tuple = tuple(allow)
     allowed_set = set(allowed_tuple)
     if check_names and allow_builtins:
