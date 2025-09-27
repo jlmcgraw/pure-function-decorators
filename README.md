@@ -5,8 +5,9 @@
 
 # pure-function-decorators
 
-_Try to enforece various types of function purity in Python_
+_Decorators to try to enforce various types of function purity in Python_
 
+Mostly vibe-coded, though I hope to whittle down any issues 
 
 ## Super-quick Start
 
@@ -18,6 +19,23 @@ Install through pip:
 pip install pure-function-decorators
 ```
 
+```python
+from pure-function-decorators import (
+    enforce_deterministic,
+    enforce_immutable,
+    forbid_global_names,
+    forbid_globals,
+    forbid_side_effects,
+)
+
+
+@forbid_global_names()
+def bad(x):
+    return x + CONST  
+
+CONST = 10
+bad(1)   # Raises RuntimeError
+```
 
 ## Documentation
 
