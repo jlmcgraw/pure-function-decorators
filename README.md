@@ -12,7 +12,7 @@ any actual utility is just a bonus
 
 ## Super-quick Start
 
-Requires: Python 3.10 to 3.13
+Requires: Python >= 3.12
 
 Install through pip:
 
