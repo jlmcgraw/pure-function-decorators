@@ -6,21 +6,11 @@ from __future__ import annotations
 import copy
 import logging
 from functools import wraps
-from typing import (
-    Any,
-    Final,
-    ParamSpec,
-    TypeVar,
-    cast,
-    overload,
-)
+from typing import Any, Final, cast, overload
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
 _Path = tuple[str, ...]
 _Diff = tuple[_Path, str]
-_P = ParamSpec("_P")
-_T = TypeVar("_T")
-_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -165,36 +155,36 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
 
 
 @overload
-def immutable_arguments(
-    fn: _DecoratedFunc,
+def immutable_arguments[**P, T](
+    fn: Callable[P, T],
     *,
     warn_only: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> _DecoratedFunc: ...
+) -> Callable[P, T]: ...
 
 
 @overload
-def immutable_arguments(
+def immutable_arguments[**P, T](
     *,
     warn_only: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
-def immutable_arguments(
-    fn: _DecoratedFunc | None = None,
+def immutable_arguments[**P, T](
+    fn: Callable[P, T] | None = None,
     *,
     warn_only: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
+) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """Prevent and surface in-place mutations performed by ``fn``.
 
     Parameters
     ----------
-    fn : Callable[_P, _T] | None, optional
+    fn : Callable[P, T] | None, optional
         The function to decorate. When omitted, the decorator is returned
         for deferred application.
     warn_only : bool, optional
@@ -219,14 +209,14 @@ def immutable_arguments(
     Any mutation is surfaced according to ``warn_only``.
     """
 
-    def decorator(func: _DecoratedFunc) -> _DecoratedFunc:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         if not enabled:
             return func
 
         effective_strict = strict and not warn_only
 
         @wraps(func)
-        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             frozen_memo: dict[int, object] = {}
             frozen_args = copy.deepcopy(args, frozen_memo)
             frozen_kwargs = copy.deepcopy(kwargs, frozen_memo)
@@ -264,7 +254,7 @@ def immutable_arguments(
 
             return result
 
-        return cast("_DecoratedFunc", wrapper)
+        return wrapper
 
     if fn is not None:
         return decorator(fn)

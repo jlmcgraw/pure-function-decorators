@@ -23,21 +23,9 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import (
-    Final,
-    NoReturn,
-    ParamSpec,
-    Self,
-    TypeVar,
-    cast,
-    overload,
-    override,
-)
+from typing import Final, NoReturn, Self, cast, overload, override
 from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 
-_P = ParamSpec("_P")
-_T = TypeVar("_T")
-_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -383,28 +371,28 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
 
 
 @overload
-def forbid_side_effects(
-    fn: _DecoratedFunc, *, enabled: bool = True, strict: bool = True
-) -> _DecoratedFunc: ...
+def forbid_side_effects[**P, T](
+    fn: Callable[P, T], *, enabled: bool = True, strict: bool = True
+) -> Callable[P, T]: ...
 
 
 @overload
-def forbid_side_effects(
+def forbid_side_effects[**P, T](
     *, enabled: bool = True, strict: bool = True
-) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
-def forbid_side_effects(
-    fn: _DecoratedFunc | None = None,
+def forbid_side_effects[**P, T](
+    fn: Callable[P, T] | None = None,
     *,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
+) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """Reject attempts to perform common side effects while ``fn`` runs.
 
     Parameters
     ----------
-    fn : Callable[_P, _T] | None, optional
+    fn : Callable[P, T] | None, optional
         The synchronous or asynchronous callable to wrap.
     enabled : bool, optional
         If ``False`` skip decorating and return ``fn`` unchanged.
@@ -419,15 +407,15 @@ def forbid_side_effects(
         depending on whether ``fn`` was provided.
     """
 
-    def decorator(func: _DecoratedFunc) -> _DecoratedFunc:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         if not enabled:
             return func
 
         if inspect.iscoroutinefunction(func):
-            async_fn = cast("Callable[_P, Awaitable[object]]", func)
+            async_fn = cast(Callable[P, Awaitable[object]], func)
 
             @wraps(func)
-            async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> object:
                 async with _SIDE_EFFECT_LOCK:
                     patches = _apply_patches(strict)
                     try:
@@ -435,10 +423,10 @@ def forbid_side_effects(
                     finally:
                         _restore(patches)
 
-            return cast("_DecoratedFunc", async_wrapper)
+            return cast(Callable[P, T], async_wrapper)
 
         @wraps(func)
-        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             with _SIDE_EFFECT_LOCK:
                 patches = _apply_patches(strict)
                 try:
@@ -446,7 +434,7 @@ def forbid_side_effects(
                 finally:
                     _restore(patches)
 
-        return cast("_DecoratedFunc", wrapper)
+        return wrapper
 
     if fn is not None:
         return decorator(fn)
