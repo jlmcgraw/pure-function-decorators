@@ -7,7 +7,8 @@
 
 _Decorators to try to enforce various types of function purity in Python_
 
-Mostly vibe-coded, though I hope to whittle down any issues 
+This is obviously mostly vibe-coded and perhaps better suited to static analysis anyhow.  I'm using it as an exercise and
+any actual utility is just a bonus
 
 ## Super-quick Start
 
@@ -20,20 +21,31 @@ pip install pure-function-decorators
 ```
 
 ```python
-from pure_function_decorators import (
-    enforce_deterministic,
-    forbid_globals,
-    forbid_side_effects,
-    immutable_arguments,
-)
+from pure_function_decorators import forbid_globals
 
 
 @forbid_globals()
 def bad(x):
     return x + CONST
 
+
 CONST = 10
-bad(1)   # Raises NameError
+bad(1)  # Raises NameError
+```
+
+```python
+import datetime
+
+from pure_function_decorators import enforce_deterministic
+
+
+@enforce_deterministic
+def bad():
+    return datetime.datetime.now().microsecond
+
+
+print(bad())
+print(bad())  # raises ValueError
 ```
 
 ## Documentation
@@ -45,31 +57,61 @@ The complete documentation can be found at the
 
 ## Existing decorators
 
-- `immutable_arguments` deep-copies inputs before invoking the wrapped callable so callers never observe in-place mutations. By default the decorator raises when a mutation is detected, and it can instead log warnings with `warn_only=True`.
-- `enforce_deterministic` reruns a function and compares its results so you can gate functions that rely on deterministic behavior.
-- `forbid_globals` prevents a function from reading or mutating module-level state by sandboxing its globals. Pass
-  `check_names=True` to also fail decoration when bytecode references globals outside the allow-list, or set
-  `sandbox=False` to keep only the bytecode-based validation.
-- `forbid_side_effects` instruments builtin operations that commonly mutate process state (e.g. file writes, subprocess launches) to surface accidental side effects.
+- `immutable_arguments` deep-copies inputs before invoking the wrapped callable so callers never see in-place mutations.
+    - By default, the decorator raises when a mutation is detected
+    - it can instead log warnings with `warn_only=True`.
+- `enforce_deterministic` ensures that the decorated function consistently returns the same result for the same
+  parameters.
+- `forbid_globals` prevents a function from reading or mutating module-level state by sandboxing its globals.
+    - `check_names=True` to also fail decoration when bytecode references globals outside the allow-list, or set
+    - `sandbox=False` to keep only the bytecode-based validation.
+- `forbid_side_effects` instruments builtin operations that commonly mutate process state (e.g. file writes, subprocess
+  launches) to surface accidental side effects.
 
 ## Future purity checks to explore
 
-The current decorators focus on globals, determinism, and structural immutability. Additional checks that build on the same inspection hooks could include:
+The current decorators focus on globals, determinism, and structural immutability.
 
-- **Non-deterministic source guards** &mdash; wrap time-, randomness-, and UUID-related modules (`time`, `datetime`, `random`, `uuid`, `secrets`) to ensure a supposedly pure function does not sample entropy or wall-clock timestamps.
-- **Environment isolation** &mdash; raise when a function touches environment variables, current working directory, or other process-wide configuration through `os.environ`, `os.chdir`, or similar APIs.
-- **I/O safelists** &mdash; expand the `forbid_side_effects` strategy with dedicated helpers that specifically deny file, socket, or HTTP operations unless a pure-safe allowlist is provided.
-- **Mutable default detection** &mdash; detect functions whose default arguments or closed-over state are mutable so callers do not accidentally share state across invocations.
-- **Dependency purity enforcement** &mdash; verify that functions only call other decorated or safelisted pure functions by walking the bytecode or AST.
+Additional checks that build on the same inspection hooks could include:
 
-These ideas could live alongside the existing decorators as optional opt-in guards so projects can combine them to match their definition of purity.
+- **Environment isolation** &mdash; raise when a function touches environment variables, current working directory, or
+  other process-wide configuration through `os.environ`, `os.chdir`, or similar APIs.
+- **I/O safelists** &mdash; expand the `forbid_side_effects` strategy with dedicated helpers that specifically deny
+  file, socket, or HTTP operations unless a pure-safe allowlist is provided.
+- **Mutable default detection** &mdash; detect functions whose default arguments or closed-over state are mutable so
+  callers do not accidentally share state across invocations.
+- **Dependency purity enforcement** &mdash; verify that functions only call other decorated or allowlisted pure functions
+  by walking the bytecode or AST.
+
+These ideas could live alongside the existing decorators as optional opt-in guards so projects can combine them to match
+their definition of purity.
 
 ## Frequently asked questions
 
 ### Can these decorators be enabled globally, like `perl`'s `strict` pragma?
 
-No. Python does not provide a hook that automatically wraps every function that is imported or defined after a module loads. The decorators in this project operate by returning a new callable, so each target function (or method) has to be wrapped explicitly. You can build your own helpers that iterate over a module or class and decorate selected callables, but the library cannot apply itself universally without the caller opting in on a per-function basis.
+No. Python does not provide a hook that automatically wraps every function that is imported or defined after a module
+loads. The decorators in this project operate by returning a new callable, so each target function (or method) has to be
+wrapped explicitly. You can build your own helpers that iterate over a module or class and decorate selected callables,
+but the library cannot apply itself universally without the caller opting in on a per-function basis.
 
-### What about leaning on the descriptor protocol to auto-wrap methods?
+## Side Effects
 
-Descriptors only help when attribute access goes through a class that you control, and Python already turns functions defined on a class into descriptors that bind methods at lookup time. Swapping in a custom descriptor still requires you to opt in for each attribute you expose, and it cannot cover free functions or methods defined on classes outside your control. You could build a metaclass or `__setattr__` hook that decorates attributes as they are assigned, but that still imposes an explicit opt-in boundary (the metaclass or base class) rather than letting a library blanket the entire interpreter.
+A side effect is any interaction with outside state other than computing and returning a value.
+
+Canonical side effects and impurity sources:
+
+_State mutation_: modifying globals, nonlocals, class/static attributes, singletons, caches, or the objects passed in as
+arguments (in-place changes).
+
+_I/O_: printing/logging, reading/writing files, networking, databases, stdin/stdout/stderr, GUI operations.
+
+_Process/system effects_: spawning threads/processes, signals, timers, sleeping, exiting the process.
+
+_Nondeterministic sources_: reading clocks (now, time), random/URNGs (random, secrets, uuid4, os.urandom), environment
+variables, current working directory, locale.
+
+_Hidden global dependencies_: reading mutable module state or configuration not provided as explicit parameters.
+
+_Observable control effects:_ raising exceptions or relying on exceptions for normal control can be considered effects
+in stricter definitions; total purity disallows them, weaker purity allows deterministic exceptions for invalid inputs.
