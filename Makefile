@@ -46,7 +46,7 @@ qa/types:  ## Run static type checks
 .PHONY: qa/lint
 qa/lint:  ## Run linters
 	uv run ruff check ${PACKAGE_TARGET} tests
-	uv run typos ${PACKAGE_TARGET} tests
+
 
 
 .PHONY: qa/full

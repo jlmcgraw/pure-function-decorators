@@ -32,7 +32,6 @@ dev = [
     "pytest-pretty",
     "pytest-random-order",
     "ruff",
-    "typos"
 ]
 
 
@@ -127,11 +126,6 @@ ignore_missing_imports = true
 reportAny = false
 reportExplicitAny = false
 reportUnusedCallResult = false
-
-
-[tool.typos.default]
-extend-ignore-identifiers-re = []
-
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pure_function_decorators"]
