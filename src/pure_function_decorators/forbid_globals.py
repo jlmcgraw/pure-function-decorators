@@ -31,13 +31,12 @@ def _build_minimal_globals(
     allow : tuple[str, ...]
         Names that remain accessible to the cloned function.
 
-    Returns
+    Returns:
     -------
     dict[str, object]
         A globals dictionary containing only the whitelisted names and
         essential module metadata.
     """
-
     source_globals = fn.__globals__
     minimal: dict[str, object] = {
         "__builtins__": source_globals.get("__builtins__", __builtins__),
@@ -66,12 +65,11 @@ def _make_sandboxed(
     minimal : dict[str, object]
         The globals dictionary the clone should operate with.
 
-    Returns
+    Returns:
     -------
     Callable[_P, _T]
         A function object that executes ``fn``'s code inside the sandbox.
     """
-
     sandboxed = types.FunctionType(
         fn.__code__,
         minimal,
@@ -106,13 +104,12 @@ def _collect_global_names(
         Whether import operations should be treated as global access, by
         default ``True``.
 
-    Returns
+    Returns:
     -------
     set[str]
         All global names referenced by the code object and its nested
         constants.
     """
-
     ops = {"LOAD_GLOBAL"}
     if include_store_delete:
         ops |= _GLOBAL_OPS - {"LOAD_GLOBAL"}
@@ -198,18 +195,17 @@ def forbid_globals(
         When ``False`` log warnings instead of raising ``RuntimeError`` during
         name checking.
 
-    Returns
+    Returns:
     -------
     Callable
         Either the decorated function or a decorator awaiting a function,
         depending on whether ``fn`` was provided.
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If ``check_names`` is enabled and a disallowed global is detected.
     """
-
     allowed_tuple = tuple(allow)
     allowed_set = set(allowed_tuple)
     if check_names and allow_builtins:

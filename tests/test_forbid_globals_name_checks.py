@@ -77,6 +77,4 @@ def test_check_names_strict_false_warns(caplog: pytest.LogCaptureFixture) -> Non
         return x + CONST
 
     assert relaxed(1) == 11
-    assert any(
-        "Global names referenced" in message for message in caplog.messages
-    )
+    assert any("Global names referenced" in message for message in caplog.messages)

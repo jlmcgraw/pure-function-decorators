@@ -127,7 +127,6 @@ def test_enabled_false_does_not_patch(capfd: pytest.CaptureFixture[str]) -> None
 
 
 def test_environ_get_blocked() -> None:
-
     @forbid_side_effects
     def read_with_get() -> str | None:
         return os.environ.get("HOME")
@@ -139,7 +138,6 @@ def test_environ_get_blocked() -> None:
 def test_relaxed_std_streams_support_flush_and_attributes(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-
     @forbid_side_effects(strict=False)
     def flush_and_inspect() -> str | None:
         print("hello", flush=True)
@@ -157,7 +155,6 @@ def test_relaxed_std_streams_support_flush_and_attributes(
 def test_relaxed_random_and_time_call_originals(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-
     @forbid_side_effects(strict=False)
     def use_random_and_sleep() -> float:
         value = random.random()

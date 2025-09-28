@@ -27,12 +27,11 @@ def _describe_collection(items: Iterable[Any]) -> str:
     items : Iterable[Any]
         Items whose representations should be summarized.
 
-    Returns
+    Returns:
     -------
     str
         A human-readable summary of the iterable contents.
     """
-
     return "[" + ", ".join(sorted(repr(item) for item in items)) + "]"
 
 
@@ -50,13 +49,12 @@ def _compare_sequence(
     path : _Path
         The navigation path used for diagnostic messages.
 
-    Returns
+    Returns:
     -------
     _Diff | None
         ``None`` if the sequences are identical, otherwise the path and
         description of the first difference encountered.
     """
-
     if len(seq_a) != len(seq_b):
         return (*path, "<len>"), f"{len(seq_a)} -> {len(seq_b)}"
     for index, (left, right) in enumerate(zip(seq_a, seq_b, strict=True)):
@@ -79,7 +77,7 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
         The hierarchical path used to build informative error messages,
         by default ``()``.
 
-    Returns
+    Returns:
     -------
     _Diff | None
         ``None`` if no mutation is detected, otherwise the path segment and
@@ -200,13 +198,13 @@ def immutable_arguments(
         When ``False`` log warnings instead of raising ``RuntimeError`` when
         mutations are detected.
 
-    Returns
+    Returns:
     -------
     Callable
         Either the decorated function or a decorator awaiting a function,
         depending on whether ``fn`` was provided.
 
-    Notes
+    Notes:
     -----
     The decorator deep-copies all positional and keyword arguments, invokes
     ``fn`` with the copies, and compares the copies against further snapshots.

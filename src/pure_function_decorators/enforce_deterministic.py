@@ -30,18 +30,15 @@ def _pickle_args(
     **kwargs : object
         Keyword arguments supplied to the decorated callable.
 
-    Returns
+    Returns:
     -------
     bytes
         A pickle representation that can be used as a dictionary key.
     """
-
     return pickle.dumps((args, kwargs))
 
 
-def _sync_wrapper(
-    fn: Callable[_P, _T], *, strict: bool
-) -> Callable[_P, _T]:
+def _sync_wrapper(fn: Callable[_P, _T], *, strict: bool) -> Callable[_P, _T]:
     """Wrap ``fn`` with deterministic-result enforcement for sync callables.
 
     Parameters
@@ -49,12 +46,11 @@ def _sync_wrapper(
     fn : Callable[_P, _T]
         The synchronous callable whose outputs should remain stable.
 
-    Returns
+    Returns:
     -------
     Callable[_P, _T]
         A wrapped callable that caches results and raises on divergence.
     """
-
     cache: dict[bytes, _T] = {}
     lock = threading.RLock()
 
@@ -99,12 +95,11 @@ def _async_wrapper(
     fn : Callable[_P, Awaitable[_AwaitedT]]
         The asynchronous callable whose awaited results must not vary.
 
-    Returns
+    Returns:
     -------
     Callable[_P, Awaitable[_AwaitedT]]
         A wrapped coroutine function that caches and validates outcomes.
     """
-
     cache: dict[bytes, _AwaitedT] = {}
     lock = asyncio.Lock()
 
@@ -168,7 +163,7 @@ def enforce_deterministic(
         When ``False`` log warnings about non-deterministic behaviour instead of
         raising ``ValueError``.
 
-    Returns
+    Returns:
     -------
     Callable
         Either the decorated function or a decorator awaiting a function,

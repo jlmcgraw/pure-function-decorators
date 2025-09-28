@@ -127,7 +127,6 @@ def test_strict_false_logs(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_enabled_false_disables_checks() -> None:
-
     @immutable_arguments(enabled=False)
     def mutate(data: list[int]) -> list[int]:
         data.append(7)

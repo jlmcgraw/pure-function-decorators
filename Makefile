@@ -57,7 +57,7 @@ qa/full: qa/format qa/test qa/lint qa/types  ## Run the full set of quality chec
 .PHONY: qa/format
 qa/format:  ## Run code formatters
 	uv run ruff format ${PACKAGE_TARGET} tests
-	uv run ruff check --select I --fix ${PACKAGE_TARGET} tests
+	uv run ruff check --fix ${PACKAGE_TARGET} tests
 
 
 # ==== Documentation ===================================================================================================

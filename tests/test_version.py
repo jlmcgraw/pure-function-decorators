@@ -2,7 +2,6 @@ from importlib.metadata import PackageNotFoundError
 from unittest import mock
 
 import pytest
-
 from pure_function_decorators.version import (
     __version__,
     get_version,
