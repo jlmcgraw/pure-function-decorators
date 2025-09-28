@@ -3,6 +3,7 @@ import random
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pure_function_decorators import forbid_side_effects
@@ -193,4 +194,4 @@ def test_relaxed_environ_operations_warn() -> None:
         if original is sentinel:
             os.environ.pop(key, None)
         else:
-            os.environ[key] = original
+            os.environ[key] = cast("str", original)

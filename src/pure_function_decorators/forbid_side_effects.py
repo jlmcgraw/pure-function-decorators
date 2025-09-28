@@ -23,7 +23,7 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import Final, NoReturn, Self, cast, overload, override
+from typing import Final, NoReturn, Self, TypeVar, cast, overload, override
 from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,9 +73,14 @@ _SIDE_EFFECT_LOCK: Final = _HybridRLock()
 
 def _emit_warning(message: str) -> None:
     """Write warnings to the original stderr stream."""
+    stderr = sys.__stderr__
+    if stderr is None:  # pragma: no cover - depends on interpreter configuration
+        _LOGGER.warning("%s", message)
+        return
+
     try:
-        sys.__stderr__.write(f"{message}\n")
-        sys.__stderr__.flush()
+        stderr.write(f"{message}\n")
+        stderr.flush()
     except Exception:  # pragma: no cover - defensive fallback
         _LOGGER.exception("Failed to write warning to stderr: %s", message)
 
@@ -143,6 +148,9 @@ class _TrapStdIO:
         return getattr(self._original, item)
 
 
+_T = TypeVar("_T")
+
+
 class _TrapEnviron(MutableMapping[str, str]):
     """Proxy object that enforces side-effect policy for ``os.environ``."""
 
@@ -182,15 +190,70 @@ class _TrapEnviron(MutableMapping[str, str]):
     def __len__(self) -> int:
         return len(self._original)
 
+    @overload
+    def get(self, key: str, default: None = None) -> str | None: ...
+
+    @overload
+    def get(self, key: str, default: str) -> str: ...
+
+    @overload
+    def get(self, key: str, default: _T) -> str | _T: ...
+
     @override
     def get(
-        self, key: str, default: str | None = None
-    ) -> str | None:  # pragma: no cover - passthrough
+        self, key: str, default: _T | None = None
+    ) -> str | _T | None:  # pragma: no cover - passthrough
         message = "Side effect blocked: os.environ.get"
         if self._strict:
             raise RuntimeError(message)
         _emit_warning(message)
-        return self._original.get(key, default)
+        if key in self._original:
+            return self._original[key]
+        return default
+
+
+def _make_datetime_proxy(*, strict: bool) -> type[datetime.datetime]:
+    """Create a ``datetime.datetime`` subclass that enforces policy."""
+    if strict:
+
+        class _TrapDateTime(datetime.datetime):
+            @override
+            @classmethod
+            def now(cls, tz: datetime.tzinfo | None = None) -> NoReturn:
+                raise RuntimeError("Side effect blocked: datetime.now")
+
+            @override
+            @classmethod
+            def utcnow(cls) -> NoReturn:
+                raise RuntimeError("Side effect blocked: datetime.utcnow")
+
+            @override
+            @classmethod
+            def today(cls) -> NoReturn:
+                raise RuntimeError("Side effect blocked: datetime.today")
+
+        return _TrapDateTime
+
+    class _WarnDateTime(datetime.datetime):
+        @override
+        @classmethod
+        def now(cls, tz: datetime.tzinfo | None = None) -> _WarnDateTime:
+            _emit_warning("Side effect blocked: datetime.now")
+            return super().now(tz) if tz is not None else super().now()
+
+        @override
+        @classmethod
+        def utcnow(cls) -> _WarnDateTime:
+            _emit_warning("Side effect blocked: datetime.utcnow")
+            return super().utcnow()
+
+        @override
+        @classmethod
+        def today(cls) -> _WarnDateTime:
+            _emit_warning("Side effect blocked: datetime.today")
+            return super().today()
+
+    return _WarnDateTime
 
 
 def _apply_patches(strict: bool) -> list[tuple[object, str, object]]:
@@ -271,53 +334,11 @@ def _apply_patches(strict: bool) -> list[tuple[object, str, object]]:
     ):
         patch_callable(func_obj, attr, name)
 
-    original_datetime = datetime.datetime
-
-    if strict:
-
-        class _TrapDateTime(original_datetime):
-            @override
-            @classmethod
-            def now(cls, tz: datetime.tzinfo | None = None) -> NoReturn:
-                raise RuntimeError("Side effect blocked: datetime.now")
-
-            @override
-            @classmethod
-            def utcnow(cls) -> NoReturn:
-                raise RuntimeError("Side effect blocked: datetime.utcnow")
-
-            @override
-            @classmethod
-            def today(cls) -> NoReturn:
-                raise RuntimeError("Side effect blocked: datetime.today")
-
-        patch_value(datetime, "datetime", lambda _orig: _TrapDateTime)
-    else:
-
-        class _WarnDateTime(original_datetime):
-            @override
-            @classmethod
-            def now(cls, tz: datetime.tzinfo | None = None) -> datetime.datetime:
-                _emit_warning("Side effect blocked: datetime.now")
-                return (
-                    original_datetime.now(tz)
-                    if tz is not None
-                    else original_datetime.now()
-                )
-
-            @override
-            @classmethod
-            def utcnow(cls) -> datetime.datetime:
-                _emit_warning("Side effect blocked: datetime.utcnow")
-                return original_datetime.now(datetime.UTC)
-
-            @override
-            @classmethod
-            def today(cls) -> datetime.datetime:
-                _emit_warning("Side effect blocked: datetime.today")
-                return original_datetime.today()
-
-        patch_value(datetime, "datetime", lambda _orig: _WarnDateTime)
+    patch_value(
+        datetime,
+        "datetime",
+        lambda _orig: _make_datetime_proxy(strict=strict),
+    )
 
     patch_value(
         os,
