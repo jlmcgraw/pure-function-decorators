@@ -1,6 +1,6 @@
 [project]
 name = "pure-function-decorators"
-version = "0.1.2"
+version = "0.1.3"
 description = "Try to enforce various types of function purity in Python"
 authors = [
     {name = "Jesse McGraw", email ="jlmcgraw@gmail.com"},
