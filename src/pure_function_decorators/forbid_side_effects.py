@@ -21,13 +21,27 @@ import threading
 import time
 import uuid
 import warnings
-from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 from contextlib import suppress
 from functools import wraps
-from typing import Final, NoReturn, ParamSpec, Self, TypeVar, cast, overload, override
+from typing import (
+    Awaitable,
+    Callable,
+    Final,
+    Iterator,
+    MutableMapping,
+    NoReturn,
+    ParamSpec,
+    Self,
+    TypeVar,
+    cast,
+    overload,
+    override,
+)
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
+_LOGGER = logging.getLogger(__name__)
 
 
 class _HybridRLock:
@@ -78,7 +92,7 @@ def _emit_warning(message: str) -> None:
         sys.__stderr__.write(f"{message}\n")
         sys.__stderr__.flush()
     except Exception:  # pragma: no cover - defensive fallback
-        pass
+        _LOGGER.exception("Failed to write warning to stderr: %s", message)
 
 
 def _trap(
@@ -147,7 +161,9 @@ class _TrapStdIO:
 class _TrapEnviron(MutableMapping[str, str]):
     """Proxy object that enforces side-effect policy for ``os.environ``."""
 
-    def __init__(self, *, strict: bool, original: MutableMapping[str, str]):
+    def __init__(
+        self, *, strict: bool, original: MutableMapping[str, str]
+    ) -> None:
         self._strict = strict
         self._original = original
 
@@ -373,22 +389,22 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
 
 @overload
 def forbid_side_effects(
-    fn: Callable[_P, _T], *, enabled: bool = True, strict: bool = True
-) -> Callable[_P, _T]: ...
+    fn: _DecoratedFunc, *, enabled: bool = True, strict: bool = True
+) -> _DecoratedFunc: ...
 
 
 @overload
 def forbid_side_effects(
     *, enabled: bool = True, strict: bool = True
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
 
 
 def forbid_side_effects(
-    fn: Callable[_P, _T] | None = None,
+    fn: _DecoratedFunc | None = None,
     *,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
     """Reject attempts to perform common side effects while ``fn`` runs.
 
     Parameters
@@ -408,7 +424,7 @@ def forbid_side_effects(
         depending on whether ``fn`` was provided.
     """
 
-    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+    def decorator(func: _DecoratedFunc) -> _DecoratedFunc:
         if not enabled:
             return func
 
@@ -424,7 +440,7 @@ def forbid_side_effects(
                     finally:
                         _restore(patches)
 
-            return cast("Callable[_P, _T]", async_wrapper)
+            return cast(_DecoratedFunc, async_wrapper)
 
         @wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
@@ -435,7 +451,7 @@ def forbid_side_effects(
                 finally:
                     _restore(patches)
 
-        return wrapper
+        return cast(_DecoratedFunc, wrapper)
 
     if fn is not None:
         return decorator(fn)

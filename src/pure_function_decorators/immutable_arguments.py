@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import wraps
-from typing import Any, Final, ParamSpec, TypeVar, cast, overload
+from typing import Any, Callable, Final, Iterable, Mapping, ParamSpec, Sequence, TypeVar, cast, overload
 
 _Path = tuple[str, ...]
 _Diff = tuple[_Path, str]
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -158,12 +158,12 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
 
 @overload
 def immutable_arguments(
-    fn: Callable[_P, _T],
+    fn: _DecoratedFunc,
     *,
     warn_only: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[_P, _T]: ...
+) -> _DecoratedFunc: ...
 
 
 @overload
@@ -172,16 +172,16 @@ def immutable_arguments(
     warn_only: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
 
 
 def immutable_arguments(
-    fn: Callable[_P, _T] | None = None,
+    fn: _DecoratedFunc | None = None,
     *,
     warn_only: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
     """Prevent and surface in-place mutations performed by ``fn``.
 
     Parameters
@@ -211,7 +211,7 @@ def immutable_arguments(
     Any mutation is surfaced according to ``warn_only``.
     """
 
-    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+    def decorator(func: _DecoratedFunc) -> _DecoratedFunc:
         if not enabled:
             return func
 
@@ -256,7 +256,7 @@ def immutable_arguments(
 
             return result
 
-        return wrapper
+        return cast(_DecoratedFunc, wrapper)
 
     if fn is not None:
         return decorator(fn)
