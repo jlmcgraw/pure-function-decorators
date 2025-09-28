@@ -5,20 +5,15 @@ from __future__ import annotations
 import asyncio
 import pickle
 import threading
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
+from typing import ParamSpec, TypeVar, cast
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-else:  # pragma: no cover
-    import collections.abc as _abc
-
-    Callable = _abc.Callable
+type _SyncCallable[**_P, _T] = Callable[_P, _T]
+type _AsyncCallable[**_P, _T] = Callable[_P, Awaitable[_T]]
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
-_AwaitedT = TypeVar("_AwaitedT")
 _MISSING = object()
 
 
@@ -43,9 +38,11 @@ def _pickle_args(
     return pickle.dumps((args, kwargs))
 
 
-def _sync_wrapper(
-    fn: Callable[_P, _T],
-) -> Callable[_P, _T]:
+def _sync_wrapper[
+    **_LocalP, _LocalT
+](
+    fn: _SyncCallable[_LocalP, _LocalT],
+) -> _SyncCallable[_LocalP, _LocalT]:
     """Wrap ``fn`` with deterministic-result enforcement for sync callables.
 
     Parameters
@@ -63,7 +60,7 @@ def _sync_wrapper(
     lock = threading.RLock()
 
     @wraps(fn)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+    def wrapper(*args: _LocalP.args, **kwargs: _LocalP.kwargs) -> _LocalT:
         key = _pickle_args(*args, **kwargs)
         with lock:
             cached = cache.get(key, _MISSING)
@@ -82,27 +79,31 @@ def _sync_wrapper(
     return wrapper
 
 
-def _async_wrapper(
-    fn: Callable[_P, Awaitable[_AwaitedT]],
-) -> Callable[_P, Awaitable[_AwaitedT]]:
+def _async_wrapper[
+    **_LocalP, _LocalAwaitedT
+](
+    fn: _AsyncCallable[_LocalP, _LocalAwaitedT],
+) -> _AsyncCallable[_LocalP, _LocalAwaitedT]:
     """Wrap ``fn`` with deterministic-result enforcement for async callables.
 
     Parameters
     ----------
-    fn : Callable[_P, Awaitable[_AwaitedT]]
+    fn : Callable
         The asynchronous callable whose awaited results must not vary.
 
     Returns
     -------
-    Callable[_P, Awaitable[_AwaitedT]]
+    Callable
         A wrapped coroutine function that caches and validates outcomes.
     """
 
-    cache: dict[bytes, _AwaitedT] = {}
+    cache: dict[bytes, _LocalAwaitedT] = {}
     lock = asyncio.Lock()
 
     @wraps(fn)
-    async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _AwaitedT:
+    async def wrapper(
+        *args: _LocalP.args, **kwargs: _LocalP.kwargs
+    ) -> _LocalAwaitedT:
         key = _pickle_args(*args, **kwargs)
         async with lock:
             cached = cache.get(key, _MISSING)
@@ -138,8 +139,9 @@ def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """
 
     if asyncio.iscoroutinefunction(fn):
-        async_fn = cast("Callable[_P, Awaitable[object]]", fn)
-        wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(async_fn)
-        return cast("Callable[_P, _T]", wrapped)
+        async_fn = cast(_AsyncCallable[_P, object], fn)
+        wrapped = _async_wrapper(async_fn)
+        return cast(Callable[_P, _T], wrapped)
 
-    return _sync_wrapper(fn)
+    sync_fn = cast(_SyncCallable[_P, _T], fn)
+    return _sync_wrapper(sync_fn)

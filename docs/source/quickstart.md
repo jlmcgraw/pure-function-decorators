@@ -2,7 +2,7 @@
 
 ## Requirements
 
-* Python 3.10 to 3.13
+* Python 3.13+
 
 
 ## Installation

@@ -1,4 +1,4 @@
-from importlib import metadata
+import importlib.metadata as metadata
 from importlib.metadata import PackageNotFoundError
 from unittest import mock
 

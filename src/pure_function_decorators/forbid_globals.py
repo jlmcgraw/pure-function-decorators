@@ -6,25 +6,25 @@ import builtins
 import dis
 import inspect
 import types
+from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast, overload
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterable
-else:  # pragma: no cover
-    import collections.abc as _abc
-
-    Callable = _abc.Callable
+from typing import ParamSpec, TypeVar, cast, overload
 
 _GLOBAL_OPS = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS = {"IMPORT_NAME"}
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
+type _SyncCallable[**_P, _T] = Callable[_P, _T]
+type _AsyncCallable[**_P, _T] = Callable[_P, Awaitable[_T]]
+
+
+type _Globals = dict[str, object]
+
 
 def _build_minimal_globals(
     fn: Callable[_P, _T], allow: tuple[str, ...]
-) -> dict[str, object]:
+) -> _Globals:
     """Return a globals mapping limited to the provided allow-list.
 
     Parameters
@@ -42,7 +42,7 @@ def _build_minimal_globals(
     """
 
     source_globals = fn.__globals__
-    minimal: dict[str, object] = {
+    minimal: _Globals = {
         "__builtins__": source_globals.get("__builtins__", __builtins__),
         "__name__": source_globals.get("__name__", fn.__module__),
         "__package__": source_globals.get("__package__"),
@@ -57,9 +57,12 @@ def _build_minimal_globals(
     return minimal
 
 
-def _make_sandboxed(
-    fn: Callable[_P, _T], minimal: dict[str, object]
-) -> Callable[_P, _T]:
+def _make_sandboxed[
+    **_LocalP, _LocalT
+](
+    fn: _SyncCallable[_LocalP, _LocalT] | _AsyncCallable[_LocalP, _LocalT],
+    minimal: _Globals,
+) -> Callable[_LocalP, _LocalT]:
     """Create a clone of ``fn`` that uses ``minimal`` as its globals mapping.
 
     Parameters
@@ -223,7 +226,7 @@ def forbid_globals(
             return fn
 
         if inspect.iscoroutinefunction(fn):
-            async_fn = cast("Callable[_P, Awaitable[object]]", fn)
+            async_fn = cast(_AsyncCallable[_P, object], fn)
 
             @wraps(fn)
             async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
@@ -232,7 +235,7 @@ def forbid_globals(
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast("Callable[_P, _T]", async_wrapper)
+            return cast(Callable[_P, _T], async_wrapper)
 
         @wraps(fn)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:

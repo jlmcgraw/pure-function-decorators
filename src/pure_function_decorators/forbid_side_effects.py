@@ -21,16 +21,10 @@ import threading
 import time
 import uuid
 import warnings
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from functools import wraps
-from typing import TYPE_CHECKING, NoReturn, ParamSpec, TypeVar, cast, override
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-else:  # pragma: no cover
-    import collections.abc as _abc
-
-    Callable = _abc.Callable
+from typing import NoReturn, ParamSpec, TypeVar, cast, override
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")

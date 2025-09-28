@@ -5,21 +5,12 @@ from __future__ import annotations
 
 import copy
 import logging
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast, overload
+from typing import Any, ParamSpec, TypeVar, cast, overload
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
-else:  # pragma: no cover - provide runtime aliases for introspection tools
-    import collections.abc as _abc
-
-    Callable = _abc.Callable
-    Iterable = _abc.Iterable
-    Mapping = _abc.Mapping
-    Sequence = _abc.Sequence
-
-_Path = tuple[str, ...]
-_Diff = tuple[_Path, str]
+type _Path = tuple[str, ...]
+type _Diff = tuple[_Path, str]
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 

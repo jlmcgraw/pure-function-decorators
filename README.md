@@ -11,7 +11,7 @@ Mostly vibe-coded, though I hope to whittle down any issues
 
 ## Super-quick Start
 
-Requires: Python 3.10 to 3.13
+Requires: Python 3.13+
 
 Install through pip:
 
