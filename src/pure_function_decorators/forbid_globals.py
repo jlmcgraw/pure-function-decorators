@@ -232,24 +232,24 @@ def forbid_globals[**P, T](
             return fn
 
         if inspect.iscoroutinefunction(fn):
-            async_fn = cast(Callable[P, Awaitable[object]], fn)
+            async_fn = cast("Callable[P, Awaitable[object]]", fn)
 
             @wraps(fn)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> object:
                 sandboxed = cast(
-                    Callable[P, Awaitable[object]],
+                    "Callable[P, Awaitable[object]]",
                     _make_sandboxed(
                         async_fn, _build_minimal_globals(async_fn, allowed_tuple)
                     ),
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast(Callable[P, T], async_wrapper)
+            return cast("Callable[P, T]", async_wrapper)
 
         @wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             sandboxed = cast(
-                Callable[P, T],
+                "Callable[P, T]",
                 _make_sandboxed(fn, _build_minimal_globals(fn, allowed_tuple)),
             )
             return sandboxed(*args, **kwargs)

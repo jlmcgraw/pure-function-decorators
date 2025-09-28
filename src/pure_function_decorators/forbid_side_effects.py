@@ -412,7 +412,7 @@ def forbid_side_effects[**P, T](
             return func
 
         if inspect.iscoroutinefunction(func):
-            async_fn = cast(Callable[P, Awaitable[object]], func)
+            async_fn = cast("Callable[P, Awaitable[object]]", func)
 
             @wraps(func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> object:
@@ -423,7 +423,7 @@ def forbid_side_effects[**P, T](
                     finally:
                         _restore(patches)
 
-            return cast(Callable[P, T], async_wrapper)
+            return cast("Callable[P, T]", async_wrapper)
 
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

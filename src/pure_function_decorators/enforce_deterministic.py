@@ -131,6 +131,7 @@ def _async_wrapper[**P, AwaitedT](
 
     return wrapper
 
+
 @overload
 def enforce_deterministic[**P, T](fn: Callable[P, T]) -> Callable[P, T]: ...
 
@@ -171,9 +172,9 @@ def enforce_deterministic[**P, T](
         if not enabled:
             return func
         if asyncio.iscoroutinefunction(func):
-            async_fn = cast(Callable[P, Awaitable[object]], func)
+            async_fn = cast("Callable[P, Awaitable[object]]", func)
             wrapped = _async_wrapper(async_fn, strict=strict)
-            return cast(Callable[P, T], wrapped)
+            return cast("Callable[P, T]", wrapped)
 
         return _sync_wrapper(func, strict=strict)
 
