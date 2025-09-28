@@ -23,14 +23,9 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import TYPE_CHECKING, NoReturn, ParamSpec, TypeVar, cast, override
+from typing import Final, NoReturn, ParamSpec, Self, TypeVar, cast, override
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-else:  # pragma: no cover
-    import collections.abc as _abc
-
-    Callable = _abc.Callable
+from collections.abc import Awaitable, Callable
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -44,7 +39,7 @@ class _HybridRLock:
 
         self._lock: threading.RLock = threading.RLock()
 
-    def __enter__(self) -> _HybridRLock:
+    def __enter__(self) -> Self:
         """Acquire the lock for use in a synchronous ``with`` block.
 
         Returns
@@ -61,7 +56,7 @@ class _HybridRLock:
 
         self._lock.release()
 
-    async def __aenter__(self) -> _HybridRLock:
+    async def __aenter__(self) -> Self:
         """Acquire the lock for use in an ``async with`` block.
 
         Returns
@@ -80,7 +75,7 @@ class _HybridRLock:
         self._lock.release()
 
 
-_SIDE_EFFECT_LOCK = _HybridRLock()
+_SIDE_EFFECT_LOCK: Final = _HybridRLock()
 
 
 def _trap(name: str) -> Callable[..., NoReturn]:

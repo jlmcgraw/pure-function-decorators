@@ -6,18 +6,12 @@ import builtins
 import dis
 import inspect
 import types
+from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast, overload
+from typing import Final, ParamSpec, TypeVar, cast, overload
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterable
-else:  # pragma: no cover
-    import collections.abc as _abc
-
-    Callable = _abc.Callable
-
-_GLOBAL_OPS = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
-_IMPORT_OPS = {"IMPORT_NAME"}
+_GLOBAL_OPS: Final = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
+_IMPORT_OPS: Final = {"IMPORT_NAME"}
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
