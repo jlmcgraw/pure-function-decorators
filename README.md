@@ -14,6 +14,10 @@ any actual utility is just a bonus
 
 Requires: Python >= 3.12
 
+The implementation adopts modern standard-library typing helpers such as
+``typing.override`` and ``typing.Self``, so earlier interpreters are not
+supported.
+
 Install through pip:
 
 ```bash

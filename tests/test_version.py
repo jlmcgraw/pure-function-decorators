@@ -1,8 +1,8 @@
-from importlib import metadata
 from importlib.metadata import PackageNotFoundError
 from unittest import mock
 
 import pytest
+
 from pure_function_decorators.version import (
     __version__,
     get_version,
@@ -14,7 +14,7 @@ from pure_function_decorators.version import (
 def test_get_version_from_metadata() -> None:
     try:
         value = get_version_from_metadata()
-    except metadata.PackageNotFoundError:
+    except PackageNotFoundError:
         pytest.skip("package metadata not available")
     assert value == __version__
 

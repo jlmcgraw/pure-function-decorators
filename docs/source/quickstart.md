@@ -2,7 +2,10 @@
 
 ## Requirements
 
-* Python 3.10 to 3.13
+* Python 3.12 or newer
+
+The library leans on modern typing improvements such as :func:`typing.override`
+and :class:`typing.Self`, so earlier interpreters are not supported.
 
 
 ## Installation
