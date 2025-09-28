@@ -7,14 +7,8 @@ import logging
 import pickle
 import threading
 from functools import wraps
-from typing import Final, ParamSpec, TypeVar, cast, overload
+from typing import Final, cast, overload
 from collections.abc import Awaitable, Callable
-
-_P = ParamSpec("_P")
-_T = TypeVar("_T")
-_AwaitedT = TypeVar("_AwaitedT")
-_SyncFunc = TypeVar("_SyncFunc", bound=Callable[_P, _T])
-_AsyncFunc = TypeVar("_AsyncFunc", bound=Callable[_P, Awaitable[_AwaitedT]])
 _MISSING: Final = object()
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,24 +34,24 @@ def _pickle_args(
     return pickle.dumps((args, kwargs))
 
 
-def _sync_wrapper(fn: _SyncFunc, *, strict: bool) -> _SyncFunc:
+def _sync_wrapper[**P, T](fn: Callable[P, T], *, strict: bool) -> Callable[P, T]:
     """Wrap ``fn`` with deterministic-result enforcement for sync callables.
 
     Parameters
     ----------
-    fn : Callable[_P, _T]
+    fn : Callable[P, T]
         The synchronous callable whose outputs should remain stable.
 
     Returns:
     -------
-    Callable[_P, _T]
+    Callable[P, T]
         A wrapped callable that caches results and raises on divergence.
     """
-    cache: dict[bytes, _T] = {}
+    cache: dict[bytes, T] = {}
     lock = threading.RLock()
 
     @wraps(fn)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         key = _pickle_args(*args, **kwargs)
         with lock:
             cached = cache.get(key, _MISSING)
@@ -84,27 +78,29 @@ def _sync_wrapper(fn: _SyncFunc, *, strict: bool) -> _SyncFunc:
             cache[key] = result
         return result
 
-    return cast("_SyncFunc", wrapper)
+    return wrapper
 
 
-def _async_wrapper(fn: _AsyncFunc, *, strict: bool) -> _AsyncFunc:
+def _async_wrapper[**P, AwaitedT](
+    fn: Callable[P, Awaitable[AwaitedT]], *, strict: bool
+) -> Callable[P, Awaitable[AwaitedT]]:
     """Wrap ``fn`` with deterministic-result enforcement for async callables.
 
     Parameters
     ----------
-    fn : Callable[_P, Awaitable[_AwaitedT]]
+    fn : Callable[P, Awaitable[AwaitedT]]
         The asynchronous callable whose awaited results must not vary.
 
     Returns:
     -------
-    Callable[_P, Awaitable[_AwaitedT]]
+    Callable[P, Awaitable[AwaitedT]]
         A wrapped coroutine function that caches and validates outcomes.
     """
-    cache: dict[bytes, _AwaitedT] = {}
+    cache: dict[bytes, AwaitedT] = {}
     lock = asyncio.Lock()
 
     @wraps(fn)
-    async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _AwaitedT:
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> AwaitedT:
         key = _pickle_args(*args, **kwargs)
         async with lock:
             cached = cache.get(key, _MISSING)
@@ -131,33 +127,29 @@ def _async_wrapper(fn: _AsyncFunc, *, strict: bool) -> _AsyncFunc:
             cache[key] = result
         return result
 
-    return cast("_AsyncFunc", wrapper)
+    return wrapper
 
-
-_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
+@overload
+def enforce_deterministic[**P, T](fn: Callable[P, T]) -> Callable[P, T]: ...
 
 
 @overload
-def enforce_deterministic(fn: _DecoratedFunc) -> _DecoratedFunc: ...
-
-
-@overload
-def enforce_deterministic(
+def enforce_deterministic[**P, T](
     *, enabled: bool = True, strict: bool = True
-) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
-def enforce_deterministic(
-    fn: _DecoratedFunc | None = None,
+def enforce_deterministic[**P, T](
+    fn: Callable[P, T] | None = None,
     *,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
+) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """Ensure the callable always returns the same value for identical inputs.
 
     Parameters
     ----------
-    fn : Callable[_P, _T] | None, optional
+    fn : Callable[P, T] | None, optional
         The function to wrap. When omitted, the decorator is returned for
         deferred application.
     enabled : bool, optional
@@ -173,18 +165,15 @@ def enforce_deterministic(
         depending on whether ``fn`` was provided.
     """
 
-    def decorator(func: _DecoratedFunc) -> _DecoratedFunc:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         if not enabled:
             return func
         if asyncio.iscoroutinefunction(func):
-            async_fn = cast("Callable[_P, Awaitable[object]]", func)
-            wrapped = cast(
-                "Callable[_P, Awaitable[object]]",
-                _async_wrapper(async_fn, strict=strict),
-            )
-            return cast("_DecoratedFunc", wrapped)
+            async_fn = cast(Callable[P, Awaitable[object]], func)
+            wrapped = _async_wrapper(async_fn, strict=strict)
+            return cast(Callable[P, T], wrapped)
 
-        return cast("_DecoratedFunc", _sync_wrapper(func, strict=strict))
+        return _sync_wrapper(func, strict=strict)
 
     if fn is not None:
         return decorator(fn)

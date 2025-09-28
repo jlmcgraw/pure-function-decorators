@@ -8,20 +8,11 @@ import inspect
 import logging
 import types
 from functools import wraps
-from typing import (
-    Final,
-    ParamSpec,
-    TypeVar,
-    cast,
-    overload,
-)
+from typing import Final, cast, overload
 from collections.abc import Awaitable, Callable, Iterable
 
 _GLOBAL_OPS: Final = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS: Final = {"IMPORT_NAME"}
-_P = ParamSpec("_P")
-_T = TypeVar("_T")
-_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +24,7 @@ def _build_minimal_globals(
 
     Parameters
     ----------
-    fn : Callable[_P, _T]
+    fn : Callable[P, T]
         The function whose globals should be mirrored.
     allow : tuple[str, ...]
         Names that remain accessible to the cloned function.
@@ -67,14 +58,14 @@ def _make_sandboxed(
 
     Parameters
     ----------
-    fn : Callable[_P, _T]
+    fn : Callable[P, T]
         The function to clone with restricted globals.
     minimal : dict[str, object]
         The globals dictionary the clone should operate with.
 
     Returns:
     -------
-    Callable[_P, _T]
+    Callable[P, T]
         A function object that executes ``fn``'s code inside the sandbox.
     """
     sandboxed = types.FunctionType(
@@ -134,8 +125,8 @@ def _collect_global_names(
 
 
 @overload
-def forbid_globals(
-    fn: _DecoratedFunc,
+def forbid_globals[**P, T](
+    fn: Callable[P, T],
     *,
     allow: Iterable[str] = (),
     allow_builtins: bool = True,
@@ -145,11 +136,11 @@ def forbid_globals(
     check_names: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> _DecoratedFunc: ...
+) -> Callable[P, T]: ...
 
 
 @overload
-def forbid_globals(
+def forbid_globals[**P, T](
     fn: None = None,
     *,
     allow: Iterable[str] = (),
@@ -160,11 +151,11 @@ def forbid_globals(
     check_names: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
-def forbid_globals(
-    fn: _DecoratedFunc | None = None,
+def forbid_globals[**P, T](
+    fn: Callable[P, T] | None = None,
     *,
     allow: Iterable[str] = (),
     allow_builtins: bool = True,
@@ -174,12 +165,12 @@ def forbid_globals(
     check_names: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
+) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """Restrict global access via name checking and/or runtime sandboxing.
 
     Parameters
     ----------
-    fn : Callable[_P, _T] | None, optional
+    fn : Callable[P, T] | None, optional
         The function to wrap. When omitted the decorator is returned for
         later application.
     allow : Iterable[str], optional
@@ -218,7 +209,7 @@ def forbid_globals(
     if check_names and allow_builtins:
         allowed_set |= set(builtins.__dict__.keys())
 
-    def decorator(fn: _DecoratedFunc) -> _DecoratedFunc:
+    def decorator(fn: Callable[P, T]) -> Callable[P, T]:
         if not enabled:
             return fn
         if check_names:
@@ -239,23 +230,29 @@ def forbid_globals(
             return fn
 
         if inspect.iscoroutinefunction(fn):
-            async_fn = cast("Callable[_P, Awaitable[object]]", fn)
+            async_fn = cast(Callable[P, Awaitable[object]], fn)
 
             @wraps(fn)
-            async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
-                sandboxed = _make_sandboxed(
-                    async_fn, _build_minimal_globals(async_fn, allowed_tuple)
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> object:
+                sandboxed = cast(
+                    Callable[P, Awaitable[object]],
+                    _make_sandboxed(
+                        async_fn, _build_minimal_globals(async_fn, allowed_tuple)
+                    ),
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast("_DecoratedFunc", async_wrapper)
+            return cast(Callable[P, T], async_wrapper)
 
         @wraps(fn)
-        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            sandboxed = _make_sandboxed(fn, _build_minimal_globals(fn, allowed_tuple))
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            sandboxed = cast(
+                Callable[P, T],
+                _make_sandboxed(fn, _build_minimal_globals(fn, allowed_tuple)),
+            )
             return sandboxed(*args, **kwargs)
 
-        return cast("_DecoratedFunc", wrapper)
+        return wrapper
 
     if fn is None:
         return decorator
