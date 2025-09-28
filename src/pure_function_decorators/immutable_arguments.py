@@ -6,7 +6,15 @@ from __future__ import annotations
 import copy
 import logging
 from functools import wraps
-from typing import Any, Callable, Final, Iterable, Mapping, ParamSpec, Sequence, TypeVar, cast, overload
+from typing import (
+    Any,
+    Final,
+    ParamSpec,
+    TypeVar,
+    cast,
+    overload,
+)
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 _Path = tuple[str, ...]
 _Diff = tuple[_Path, str]
@@ -256,7 +264,7 @@ def immutable_arguments(
 
             return result
 
-        return cast(_DecoratedFunc, wrapper)
+        return cast("_DecoratedFunc", wrapper)
 
     if fn is not None:
         return decorator(fn)

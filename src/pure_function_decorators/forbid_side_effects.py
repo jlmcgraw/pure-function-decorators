@@ -24,11 +24,7 @@ import warnings
 from contextlib import suppress
 from functools import wraps
 from typing import (
-    Awaitable,
-    Callable,
     Final,
-    Iterator,
-    MutableMapping,
     NoReturn,
     ParamSpec,
     Self,
@@ -37,6 +33,7 @@ from typing import (
     overload,
     override,
 )
+from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -161,9 +158,7 @@ class _TrapStdIO:
 class _TrapEnviron(MutableMapping[str, str]):
     """Proxy object that enforces side-effect policy for ``os.environ``."""
 
-    def __init__(
-        self, *, strict: bool, original: MutableMapping[str, str]
-    ) -> None:
+    def __init__(self, *, strict: bool, original: MutableMapping[str, str]) -> None:
         self._strict = strict
         self._original = original
 
@@ -440,7 +435,7 @@ def forbid_side_effects(
                     finally:
                         _restore(patches)
 
-            return cast(_DecoratedFunc, async_wrapper)
+            return cast("_DecoratedFunc", async_wrapper)
 
         @wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
@@ -451,7 +446,7 @@ def forbid_side_effects(
                 finally:
                     _restore(patches)
 
-        return cast(_DecoratedFunc, wrapper)
+        return cast("_DecoratedFunc", wrapper)
 
     if fn is not None:
         return decorator(fn)

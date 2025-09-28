@@ -7,15 +7,14 @@ import logging
 import pickle
 import threading
 from functools import wraps
-from typing import Awaitable, Callable, Final, ParamSpec, TypeVar, cast, overload
+from typing import Final, ParamSpec, TypeVar, cast, overload
+from collections.abc import Awaitable, Callable
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 _AwaitedT = TypeVar("_AwaitedT")
 _SyncFunc = TypeVar("_SyncFunc", bound=Callable[_P, _T])
-_AsyncFunc = TypeVar(
-    "_AsyncFunc", bound=Callable[_P, Awaitable[_AwaitedT]]
-)
+_AsyncFunc = TypeVar("_AsyncFunc", bound=Callable[_P, Awaitable[_AwaitedT]])
 _MISSING: Final = object()
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,7 +84,7 @@ def _sync_wrapper(fn: _SyncFunc, *, strict: bool) -> _SyncFunc:
             cache[key] = result
         return result
 
-    return cast(_SyncFunc, wrapper)
+    return cast("_SyncFunc", wrapper)
 
 
 def _async_wrapper(fn: _AsyncFunc, *, strict: bool) -> _AsyncFunc:
@@ -132,7 +131,7 @@ def _async_wrapper(fn: _AsyncFunc, *, strict: bool) -> _AsyncFunc:
             cache[key] = result
         return result
 
-    return cast(_AsyncFunc, wrapper)
+    return cast("_AsyncFunc", wrapper)
 
 
 _DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
@@ -183,9 +182,9 @@ def enforce_deterministic(
                 "Callable[_P, Awaitable[object]]",
                 _async_wrapper(async_fn, strict=strict),
             )
-            return cast(_DecoratedFunc, wrapped)
+            return cast("_DecoratedFunc", wrapped)
 
-        return cast(_DecoratedFunc, _sync_wrapper(func, strict=strict))
+        return cast("_DecoratedFunc", _sync_wrapper(func, strict=strict))
 
     if fn is not None:
         return decorator(fn)

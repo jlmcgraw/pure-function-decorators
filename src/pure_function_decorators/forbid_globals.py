@@ -8,7 +8,14 @@ import inspect
 import logging
 import types
 from functools import wraps
-from typing import Awaitable, Callable, Iterable, Final, ParamSpec, TypeVar, cast, overload
+from typing import (
+    Final,
+    ParamSpec,
+    TypeVar,
+    cast,
+    overload,
+)
+from collections.abc import Awaitable, Callable, Iterable
 
 _GLOBAL_OPS: Final = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS: Final = {"IMPORT_NAME"}
@@ -241,14 +248,14 @@ def forbid_globals(
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast(_DecoratedFunc, async_wrapper)
+            return cast("_DecoratedFunc", async_wrapper)
 
         @wraps(fn)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
             sandboxed = _make_sandboxed(fn, _build_minimal_globals(fn, allowed_tuple))
             return sandboxed(*args, **kwargs)
 
-        return cast(_DecoratedFunc, wrapper)
+        return cast("_DecoratedFunc", wrapper)
 
     if fn is None:
         return decorator
