@@ -1,3 +1,7 @@
+import os
+import random
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -120,3 +124,76 @@ def test_enabled_false_does_not_patch(capfd: pytest.CaptureFixture[str]) -> None
     captured = capfd.readouterr()
     assert captured.out == "allowed\n"
     assert "Side effect blocked" not in captured.err
+
+
+def test_environ_get_blocked() -> None:
+
+    @forbid_side_effects
+    def read_with_get() -> str | None:
+        return os.environ.get("HOME")
+
+    with pytest.raises(RuntimeError):
+        read_with_get()
+
+
+def test_relaxed_std_streams_support_flush_and_attributes(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+
+    @forbid_side_effects(strict=False)
+    def flush_and_inspect() -> str | None:
+        print("hello", flush=True)
+        return sys.stdout.encoding
+
+    encoding = flush_and_inspect()
+    captured = capfd.readouterr()
+    assert captured.out == "hello\n"
+    assert "Side effect blocked: stdio write" in captured.err
+    # ``encoding`` can legitimately be ``None`` (e.g. when stdout is binary),
+    # but accessing it should not raise while the decorator is active.
+    assert encoding is None or isinstance(encoding, str)
+
+
+def test_relaxed_random_and_time_call_originals(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+
+    @forbid_side_effects(strict=False)
+    def use_random_and_sleep() -> float:
+        value = random.random()
+        time.sleep(0)
+        return value
+
+    result = use_random_and_sleep()
+    captured = capfd.readouterr()
+    assert 0.0 <= result < 1.0
+    assert "Side effect blocked: random.random" in captured.err
+    assert "Side effect blocked: time.sleep" in captured.err
+
+
+def test_relaxed_environ_operations_warn() -> None:
+    sentinel = object()
+    key = "PFD_TEST_VAR"
+    original = os.environ.get(key, sentinel)
+    baseline_length = len(os.environ)
+
+    @forbid_side_effects(strict=False)
+    def mutate_env() -> tuple[int, bool]:
+        os.environ[key] = "value"
+        length = len(os.environ)
+        present = any(candidate == key for candidate in os.environ)
+        assert os.environ[key] == "value"
+        del os.environ[key]
+        return length, present
+
+    try:
+        length, present = mutate_env()
+        # The proxy should forward len/iteration to the underlying mapping.
+        assert length == baseline_length + 1
+        assert present is True
+        assert len(os.environ) == baseline_length
+    finally:
+        if original is sentinel:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original
