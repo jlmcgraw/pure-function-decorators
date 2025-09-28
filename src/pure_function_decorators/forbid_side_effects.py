@@ -25,7 +25,7 @@ from contextlib import suppress
 from functools import wraps
 from typing import Final, NoReturn, ParamSpec, Self, TypeVar, cast, overload, override
 
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -155,27 +155,30 @@ class _TrapStdIO:
         return getattr(self._original, item)
 
 
-class _TrapEnviron(MutableMapping[str, object]):
+class _TrapEnviron(MutableMapping[str, str]):
     """Proxy object that enforces side-effect policy for ``os.environ``."""
 
-    def __init__(self, *, strict: bool, original: MutableMapping[str, object]):
+    def __init__(self, *, strict: bool, original: MutableMapping[str, str]):
         self._strict = strict
         self._original = original
 
-    def __getitem__(self, key: str) -> object:
+    @override
+    def __getitem__(self, key: str) -> str:
         message = "Side effect blocked: os.environ[] read"
         if self._strict:
             raise RuntimeError(message)
         _emit_warning(message)
         return self._original[key]
 
-    def __setitem__(self, key: str, value: object) -> None:
+    @override
+    def __setitem__(self, key: str, value: str) -> None:
         message = "Side effect blocked: os.environ[] write"
         if self._strict:
             raise RuntimeError(message)
         _emit_warning(message)
         self._original[key] = value
 
+    @override
     def __delitem__(self, key: str) -> None:
         message = "Side effect blocked: os.environ del"
         if self._strict:
@@ -183,15 +186,18 @@ class _TrapEnviron(MutableMapping[str, object]):
         _emit_warning(message)
         del self._original[key]
 
-    def __iter__(self):
+    @override
+    def __iter__(self) -> Iterator[str]:
         return iter(self._original)
 
+    @override
     def __len__(self) -> int:
         return len(self._original)
 
+    @override
     def get(
-        self, key: str, default: object | None = None
-    ) -> object | None:  # pragma: no cover - passthrough
+        self, key: str, default: str | None = None
+    ) -> str | None:  # pragma: no cover - passthrough
         message = "Side effect blocked: os.environ.get"
         if self._strict:
             raise RuntimeError(message)
@@ -284,17 +290,17 @@ def _apply_patches(strict: bool) -> list[tuple[object, str, object]]:
         class _TrapDateTime(original_datetime):
             @override
             @classmethod
-            def now(cls, *_args: object, **_kwargs: object) -> NoReturn:
+            def now(cls, tz: datetime.tzinfo | None = None) -> NoReturn:
                 raise RuntimeError('Side effect blocked: datetime.now')
 
             @override
             @classmethod
-            def utcnow(cls, *_args: object, **_kwargs: object) -> NoReturn:
+            def utcnow(cls) -> NoReturn:
                 raise RuntimeError('Side effect blocked: datetime.utcnow')
 
             @override
             @classmethod
-            def today(cls, *_args: object, **_kwargs: object) -> NoReturn:
+            def today(cls) -> NoReturn:
                 raise RuntimeError('Side effect blocked: datetime.today')
 
         patch_value(datetime, 'datetime', lambda _orig: _TrapDateTime)
@@ -302,21 +308,27 @@ def _apply_patches(strict: bool) -> list[tuple[object, str, object]]:
         class _WarnDateTime(original_datetime):
             @override
             @classmethod
-            def now(cls, *args: object, **kwargs: object) -> datetime.datetime:
+            def now(
+                cls, tz: datetime.tzinfo | None = None
+            ) -> datetime.datetime:
                 _emit_warning('Side effect blocked: datetime.now')
-                return original_datetime.now(*args, **kwargs)
+                return (
+                    original_datetime.now(tz)
+                    if tz is not None
+                    else original_datetime.now()
+                )
 
             @override
             @classmethod
-            def utcnow(cls, *args: object, **kwargs: object) -> datetime.datetime:
+            def utcnow(cls) -> datetime.datetime:
                 _emit_warning('Side effect blocked: datetime.utcnow')
-                return original_datetime.utcnow(*args, **kwargs)
+                return original_datetime.now(datetime.timezone.utc)
 
             @override
             @classmethod
-            def today(cls, *args: object, **kwargs: object) -> datetime.datetime:
+            def today(cls) -> datetime.datetime:
                 _emit_warning('Side effect blocked: datetime.today')
-                return original_datetime.today(*args, **kwargs)
+                return original_datetime.today()
 
         patch_value(datetime, 'datetime', lambda _orig: _WarnDateTime)
 
@@ -325,7 +337,7 @@ def _apply_patches(strict: bool) -> list[tuple[object, str, object]]:
         'environ',
         lambda original: _TrapEnviron(
             strict=strict,
-            original=cast('MutableMapping[str, object]', original),
+            original=cast('MutableMapping[str, str]', original),
         ),
     )
 
