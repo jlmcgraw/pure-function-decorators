@@ -23,6 +23,7 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
+from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 from typing import (
     Final,
     NoReturn,
@@ -34,7 +35,6 @@ from typing import (
     override,
     runtime_checkable,
 )
-from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,12 +144,20 @@ class _SupportsFlush(Protocol):
 class _TrapStdIO:
     """File-like object that reacts to writes to stdout/stderr."""
 
-    def __init__(self, *, strict: bool, original: object | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        strict: bool,
+        original: object | None = None,
+    ) -> None:
         """Store behaviour configuration for stdio interception."""
-        self._strict: bool = strict
-        self._original: object | None = original
+        self._strict: bool
+        self._original: object | None
 
-    def write(self, *args: object, **kwargs: object) -> object:
+        self._strict = strict
+        self._original = original
+
+    def write(self, *args: object, **kwargs: object) -> object | None:
         """Handle writes by raising or delegating with a warning."""
         message = "Side effect blocked: stdio write"
         if self._strict:
@@ -160,7 +168,7 @@ class _TrapStdIO:
             return original.write(*args, **kwargs)
         return None
 
-    def flush(self) -> object:
+    def flush(self) -> object | None:
         """Provide a harmless flush implementation for callers that expect one."""
         original = self._original
         if original is not None and isinstance(original, _SupportsFlush):
@@ -181,8 +189,11 @@ class _TrapEnviron(MutableMapping[str, str]):
     """Proxy object that enforces side-effect policy for ``os.environ``."""
 
     def __init__(self, *, strict: bool, original: MutableMapping[str, str]) -> None:
-        self._strict: bool = strict
-        self._original: MutableMapping[str, str] = original
+        self._strict: bool
+        self._original: MutableMapping[str, str]
+
+        self._strict = strict
+        self._original = original
 
     @override
     def __getitem__(self, key: str) -> str:
