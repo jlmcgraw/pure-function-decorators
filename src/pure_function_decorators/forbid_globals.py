@@ -7,20 +7,20 @@ import dis
 import inspect
 import logging
 import types
-from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
-from typing import Final, ParamSpec, TypeVar, cast, overload
+from typing import Awaitable, Callable, Iterable, Final, ParamSpec, TypeVar, cast, overload
 
 _GLOBAL_OPS: Final = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS: Final = {"IMPORT_NAME"}
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _build_minimal_globals(
-    fn: Callable[_P, _T], allow: tuple[str, ...]
+    fn: Callable[..., object], allow: tuple[str, ...]
 ) -> dict[str, object]:
     """Return a globals mapping limited to the provided allow-list.
 
@@ -54,8 +54,8 @@ def _build_minimal_globals(
 
 
 def _make_sandboxed(
-    fn: Callable[_P, _T], minimal: dict[str, object]
-) -> Callable[_P, _T]:
+    fn: Callable[..., object], minimal: dict[str, object]
+) -> Callable[..., object]:
     """Create a clone of ``fn`` that uses ``minimal`` as its globals mapping.
 
     Parameters
@@ -83,7 +83,7 @@ def _make_sandboxed(
     sandboxed.__kwdefaults__ = getattr(fn, "__kwdefaults__", None)
     sandboxed.__annotations__ = getattr(fn, "__annotations__", {}).copy()
     minimal[fn.__name__] = sandboxed
-    return sandboxed
+    return cast("Callable[..., object]", sandboxed)
 
 
 def _collect_global_names(
@@ -128,7 +128,7 @@ def _collect_global_names(
 
 @overload
 def forbid_globals(
-    fn: Callable[_P, _T],
+    fn: _DecoratedFunc,
     *,
     allow: Iterable[str] = (),
     allow_builtins: bool = True,
@@ -138,7 +138,7 @@ def forbid_globals(
     check_names: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[_P, _T]: ...
+) -> _DecoratedFunc: ...
 
 
 @overload
@@ -153,11 +153,11 @@ def forbid_globals(
     check_names: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
 
 
 def forbid_globals(
-    fn: Callable[_P, _T] | None = None,
+    fn: _DecoratedFunc | None = None,
     *,
     allow: Iterable[str] = (),
     allow_builtins: bool = True,
@@ -167,7 +167,7 @@ def forbid_globals(
     check_names: bool = False,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
     """Restrict global access via name checking and/or runtime sandboxing.
 
     Parameters
@@ -211,7 +211,7 @@ def forbid_globals(
     if check_names and allow_builtins:
         allowed_set |= set(builtins.__dict__.keys())
 
-    def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+    def decorator(fn: _DecoratedFunc) -> _DecoratedFunc:
         if not enabled:
             return fn
         if check_names:
@@ -241,14 +241,14 @@ def forbid_globals(
                 )
                 return await sandboxed(*args, **kwargs)
 
-            return cast("Callable[_P, _T]", async_wrapper)
+            return cast(_DecoratedFunc, async_wrapper)
 
         @wraps(fn)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
             sandboxed = _make_sandboxed(fn, _build_minimal_globals(fn, allowed_tuple))
             return sandboxed(*args, **kwargs)
 
-        return wrapper
+        return cast(_DecoratedFunc, wrapper)
 
     if fn is None:
         return decorator

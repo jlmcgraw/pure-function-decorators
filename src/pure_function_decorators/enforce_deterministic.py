@@ -6,13 +6,16 @@ import asyncio
 import logging
 import pickle
 import threading
-from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Final, ParamSpec, TypeVar, cast, overload
+from typing import Awaitable, Callable, Final, ParamSpec, TypeVar, cast, overload
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 _AwaitedT = TypeVar("_AwaitedT")
+_SyncFunc = TypeVar("_SyncFunc", bound=Callable[_P, _T])
+_AsyncFunc = TypeVar(
+    "_AsyncFunc", bound=Callable[_P, Awaitable[_AwaitedT]]
+)
 _MISSING: Final = object()
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ def _pickle_args(
     return pickle.dumps((args, kwargs))
 
 
-def _sync_wrapper(fn: Callable[_P, _T], *, strict: bool) -> Callable[_P, _T]:
+def _sync_wrapper(fn: _SyncFunc, *, strict: bool) -> _SyncFunc:
     """Wrap ``fn`` with deterministic-result enforcement for sync callables.
 
     Parameters
@@ -82,12 +85,10 @@ def _sync_wrapper(fn: Callable[_P, _T], *, strict: bool) -> Callable[_P, _T]:
             cache[key] = result
         return result
 
-    return wrapper
+    return cast(_SyncFunc, wrapper)
 
 
-def _async_wrapper(
-    fn: Callable[_P, Awaitable[_AwaitedT]], *, strict: bool
-) -> Callable[_P, Awaitable[_AwaitedT]]:
+def _async_wrapper(fn: _AsyncFunc, *, strict: bool) -> _AsyncFunc:
     """Wrap ``fn`` with deterministic-result enforcement for async callables.
 
     Parameters
@@ -131,25 +132,28 @@ def _async_wrapper(
             cache[key] = result
         return result
 
-    return wrapper
+    return cast(_AsyncFunc, wrapper)
+
+
+_DecoratedFunc = TypeVar("_DecoratedFunc", bound=Callable[_P, _T])
 
 
 @overload
-def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]: ...
+def enforce_deterministic(fn: _DecoratedFunc) -> _DecoratedFunc: ...
 
 
 @overload
 def enforce_deterministic(
     *, enabled: bool = True, strict: bool = True
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+) -> Callable[[_DecoratedFunc], _DecoratedFunc]: ...
 
 
 def enforce_deterministic(
-    fn: Callable[_P, _T] | None = None,
+    fn: _DecoratedFunc | None = None,
     *,
     enabled: bool = True,
     strict: bool = True,
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
+) -> Callable[[_DecoratedFunc], _DecoratedFunc] | _DecoratedFunc:
     """Ensure the callable always returns the same value for identical inputs.
 
     Parameters
@@ -170,17 +174,18 @@ def enforce_deterministic(
         depending on whether ``fn`` was provided.
     """
 
-    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+    def decorator(func: _DecoratedFunc) -> _DecoratedFunc:
         if not enabled:
             return func
         if asyncio.iscoroutinefunction(func):
             async_fn = cast("Callable[_P, Awaitable[object]]", func)
-            wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(
-                async_fn, strict=strict
+            wrapped = cast(
+                "Callable[_P, Awaitable[object]]",
+                _async_wrapper(async_fn, strict=strict),
             )
-            return cast("Callable[_P, _T]", wrapped)
+            return cast(_DecoratedFunc, wrapped)
 
-        return _sync_wrapper(func, strict=strict)
+        return cast(_DecoratedFunc, _sync_wrapper(func, strict=strict))
 
     if fn is not None:
         return decorator(fn)
