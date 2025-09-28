@@ -108,3 +108,33 @@ def test_warn_only_returns_mutated_values(caplog: pytest.LogCaptureFixture) -> N
     assert mutated_args == [1, 2, 3, 99]
     assert mutated_payload == [4, 5, 42]
     assert any("Argument mutated" in message for message in caplog.messages)
+
+
+def test_strict_false_logs(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("WARNING")
+
+    @immutable_arguments(strict=False)
+    def mutate(data: list[int]) -> list[int]:
+        data.append(5)
+        return data
+
+    original = [1, 2]
+    result = mutate(original)
+
+    assert original == [1, 2]
+    assert result == [1, 2, 5]
+    assert any("Argument mutated" in message for message in caplog.messages)
+
+
+def test_enabled_false_disables_checks() -> None:
+
+    @immutable_arguments(enabled=False)
+    def mutate(data: list[int]) -> list[int]:
+        data.append(7)
+        return data
+
+    payload = [1, 2]
+    result = mutate(payload)
+
+    assert payload == [1, 2, 7]
+    assert result is payload

@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 import dis
 import inspect
+import logging
 import types
 from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
@@ -14,6 +15,8 @@ _GLOBAL_OPS: Final = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS: Final = {"IMPORT_NAME"}
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _build_minimal_globals(
@@ -136,6 +139,8 @@ def forbid_globals(
     include_imports: bool = True,
     sandbox: bool = True,
     check_names: bool = False,
+    enabled: bool = True,
+    strict: bool = True,
 ) -> Callable[_P, _T]: ...
 
 
@@ -149,6 +154,8 @@ def forbid_globals(
     include_imports: bool = True,
     sandbox: bool = True,
     check_names: bool = False,
+    enabled: bool = True,
+    strict: bool = True,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
 
 
@@ -161,6 +168,8 @@ def forbid_globals(
     include_imports: bool = True,
     sandbox: bool = True,
     check_names: bool = False,
+    enabled: bool = True,
+    strict: bool = True,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
     """Restrict global access via name checking and/or runtime sandboxing.
 
@@ -183,6 +192,11 @@ def forbid_globals(
         If ``True`` execute the function with a restricted globals dictionary.
     check_names : bool, optional
         When ``True`` statically inspect the function for disallowed names.
+    enabled : bool, optional
+        If ``False`` skip decorating and return ``fn`` unchanged.
+    strict : bool, optional
+        When ``False`` log warnings instead of raising ``RuntimeError`` during
+        name checking.
 
     Returns
     -------
@@ -202,6 +216,8 @@ def forbid_globals(
         allowed_set |= set(builtins.__dict__.keys())
 
     def decorator(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+        if not enabled:
+            return fn
         if check_names:
             used = _collect_global_names(
                 fn.__code__,
@@ -211,7 +227,10 @@ def forbid_globals(
             used.discard(fn.__name__)
             disallowed = sorted(name for name in used if name not in allowed_set)
             if disallowed:
-                raise RuntimeError(f"Global names referenced: {disallowed}")
+                message = f"Global names referenced: {disallowed}"
+                if strict:
+                    raise RuntimeError(message)
+                _LOGGER.warning(message)
 
         if not sandbox:
             return fn

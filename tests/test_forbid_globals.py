@@ -72,3 +72,12 @@ def test_async_globals_allowed() -> None:
         assert await async_uses_const_ok(3) == 8
 
     asyncio.run(runner())
+
+
+@forbid_globals(enabled=False)
+def relaxed(x: int) -> int:
+    return x + CONST
+
+
+def test_enabled_false_leaves_function_untouched() -> None:
+    assert relaxed(4) == 9

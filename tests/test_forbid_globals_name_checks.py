@@ -67,3 +67,16 @@ def test_import_detected_unless_disabled() -> None:
         del math
 
     load_module_ok()
+
+
+def test_check_names_strict_false_warns(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("WARNING")
+
+    @forbid_globals(check_names=True, sandbox=False, strict=False)
+    def relaxed(x: int) -> int:
+        return x + CONST
+
+    assert relaxed(1) == 11
+    assert any(
+        "Global names referenced" in message for message in caplog.messages
+    )

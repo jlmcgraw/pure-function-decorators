@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import pickle
 import threading
 from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Final, ParamSpec, TypeVar, cast
+from typing import Final, ParamSpec, TypeVar, cast, overload
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 _AwaitedT = TypeVar("_AwaitedT")
 _MISSING: Final = object()
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _pickle_args(
@@ -37,7 +40,7 @@ def _pickle_args(
 
 
 def _sync_wrapper(
-    fn: Callable[_P, _T],
+    fn: Callable[_P, _T], *, strict: bool
 ) -> Callable[_P, _T]:
     """Wrap ``fn`` with deterministic-result enforcement for sync callables.
 
@@ -63,12 +66,23 @@ def _sync_wrapper(
         result = fn(*args, **kwargs)
         if cached is not _MISSING:
             if cached != result:
-                raise ValueError("Non-deterministic output detected")
+                message = "Non-deterministic output detected"
+                if strict:
+                    raise ValueError(message)
+                _LOGGER.warning(message)
+                with lock:
+                    cache[key] = result
+                return result
             return result
         with lock:
             current = cache.get(key, _MISSING)
             if current is not _MISSING and current != result:
-                raise ValueError("Non-deterministic output detected")
+                message = "Non-deterministic output detected"
+                if strict:
+                    raise ValueError(message)
+                _LOGGER.warning(message)
+                cache[key] = result
+                return result
             cache[key] = result
         return result
 
@@ -76,7 +90,7 @@ def _sync_wrapper(
 
 
 def _async_wrapper(
-    fn: Callable[_P, Awaitable[_AwaitedT]],
+    fn: Callable[_P, Awaitable[_AwaitedT]], *, strict: bool
 ) -> Callable[_P, Awaitable[_AwaitedT]]:
     """Wrap ``fn`` with deterministic-result enforcement for async callables.
 
@@ -102,37 +116,77 @@ def _async_wrapper(
         result = await fn(*args, **kwargs)
         if cached is not _MISSING:
             if cached != result:
-                raise ValueError("Non-deterministic output detected")
+                message = "Non-deterministic output detected"
+                if strict:
+                    raise ValueError(message)
+                _LOGGER.warning(message)
+                async with lock:
+                    cache[key] = result
+                return result
             return result
         async with lock:
             current = cache.get(key, _MISSING)
             if current is not _MISSING and current != result:
-                raise ValueError("Non-deterministic output detected")
+                message = "Non-deterministic output detected"
+                if strict:
+                    raise ValueError(message)
+                _LOGGER.warning(message)
+                cache[key] = result
+                return result
             cache[key] = result
         return result
 
     return wrapper
 
 
-def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+@overload
+def enforce_deterministic(fn: Callable[_P, _T]) -> Callable[_P, _T]: ...
+
+
+@overload
+def enforce_deterministic(
+    *, enabled: bool = True, strict: bool = True
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+
+
+def enforce_deterministic(
+    fn: Callable[_P, _T] | None = None,
+    *,
+    enabled: bool = True,
+    strict: bool = True,
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
     """Ensure the callable always returns the same value for identical inputs.
 
     Parameters
     ----------
-    fn : Callable[_P, _T]
-        The synchronous or asynchronous callable to wrap.
+    fn : Callable[_P, _T] | None, optional
+        The function to wrap. When omitted, the decorator is returned for
+        deferred application.
+    enabled : bool, optional
+        If ``False`` skip decorating and return ``fn`` unchanged.
+    strict : bool, optional
+        When ``False`` log warnings about non-deterministic behaviour instead of
+        raising ``ValueError``.
 
     Returns
     -------
-    Callable[_P, _T]
-        A wrapper that caches results per argument signature and raises
-        ``ValueError`` if a subsequent invocation produces a different
-        outcome.
+    Callable
+        Either the decorated function or a decorator awaiting a function,
+        depending on whether ``fn`` was provided.
     """
 
-    if asyncio.iscoroutinefunction(fn):
-        async_fn = cast("Callable[_P, Awaitable[object]]", fn)
-        wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(async_fn)
-        return cast("Callable[_P, _T]", wrapped)
+    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+        if not enabled:
+            return func
+        if asyncio.iscoroutinefunction(func):
+            async_fn = cast("Callable[_P, Awaitable[object]]", func)
+            wrapped: Callable[_P, Awaitable[object]] = _async_wrapper(
+                async_fn, strict=strict
+            )
+            return cast("Callable[_P, _T]", wrapped)
 
-    return _sync_wrapper(fn)
+        return _sync_wrapper(func, strict=strict)
+
+    if fn is not None:
+        return decorator(fn)
+    return decorator
