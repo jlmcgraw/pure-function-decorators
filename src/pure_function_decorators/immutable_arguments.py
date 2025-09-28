@@ -6,8 +6,10 @@ from __future__ import annotations
 import copy
 import logging
 from functools import wraps
-from typing import Any, Final, cast, overload
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Final, cast, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
 _Path = tuple[str, ...]
 _Diff = tuple[_Path, str]

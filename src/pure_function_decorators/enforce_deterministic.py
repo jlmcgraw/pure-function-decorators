@@ -7,8 +7,10 @@ import logging
 import pickle
 import threading
 from functools import wraps
-from typing import Final, cast, overload
-from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Final, cast, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 _MISSING: Final = object()
 
 _LOGGER = logging.getLogger(__name__)
