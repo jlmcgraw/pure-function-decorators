@@ -23,9 +23,9 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import Final, NoReturn, ParamSpec, Self, TypeVar, cast, override
+from typing import Final, NoReturn, ParamSpec, Self, TypeVar, cast, overload, override
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, MutableMapping
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -78,8 +78,23 @@ class _HybridRLock:
 _SIDE_EFFECT_LOCK: Final = _HybridRLock()
 
 
-def _trap(name: str) -> Callable[..., NoReturn]:
-    """Return a callable that raises ``RuntimeError`` when invoked.
+def _emit_warning(message: str) -> None:
+    """Write warnings to the original stderr stream."""
+
+    try:
+        sys.__stderr__.write(f"{message}\n")
+        sys.__stderr__.flush()
+    except Exception:  # pragma: no cover - defensive fallback
+        pass
+
+
+def _trap(
+    name: str,
+    *,
+    strict: bool,
+    original: Callable[..., object] | None = None,
+) -> Callable[..., object]:
+    """Return a callable that reacts to blocked side-effect attempts.
 
     Parameters
     ----------
@@ -88,31 +103,109 @@ def _trap(name: str) -> Callable[..., NoReturn]:
 
     Returns
     -------
-    Callable[..., NoReturn]
-        A function that raises ``RuntimeError`` whenever it is called.
+    Callable[..., object]
+        A function that raises ``RuntimeError`` or logs warnings based on
+        ``strict`` whenever it is called.
     """
 
-    def _raiser(*_args: object, **_kwargs: object) -> NoReturn:
-        raise RuntimeError(f"Side effect blocked: {name}")
+    def _handler(*args: object, **kwargs: object) -> object:
+        message = f"Side effect blocked: {name}"
+        if strict:
+            raise RuntimeError(message)
+        _emit_warning(message)
+        if original is not None:
+            return original(*args, **kwargs)
+        return None
 
-    return _raiser
+    return _handler
 
 
 class _TrapStdIO:
-    """File-like object that rejects writes to stdout/stderr."""
+    """File-like object that reacts to writes to stdout/stderr."""
 
-    def write(self, *_args: object, **_kwargs: object) -> NoReturn:
-        """Prevent writes by raising ``RuntimeError``."""
+    def __init__(self, *, strict: bool, original: object | None = None) -> None:
+        """Store behaviour configuration for stdio interception."""
 
-        raise RuntimeError("Side effect blocked: stdio write")
+        self._strict = strict
+        self._original = original
 
-    def flush(self) -> None:
-        """Provide a harmless flush implementation for callers that expect one."""
+    def write(self, *args: object, **kwargs: object) -> object:
+        """Handle writes by raising or delegating with a warning."""
+
+        message = "Side effect blocked: stdio write"
+        if self._strict:
+            raise RuntimeError(message)
+        _emit_warning(message)
+        if self._original is not None and hasattr(self._original, "write"):
+            return self._original.write(*args, **kwargs)
         return None
 
+    def flush(self) -> object:
+        """Provide a harmless flush implementation for callers that expect one."""
 
-def _apply_patches() -> list[tuple[object, str, object]]:
+        if self._original is not None and hasattr(self._original, "flush"):
+            return self._original.flush()
+        return None
+
+    def __getattr__(self, item: str) -> object:
+        """Delegate attribute access to the wrapped stream when available."""
+
+        if self._original is None:
+            raise AttributeError(item)
+        return getattr(self._original, item)
+
+
+class _TrapEnviron(MutableMapping[str, object]):
+    """Proxy object that enforces side-effect policy for ``os.environ``."""
+
+    def __init__(self, *, strict: bool, original: MutableMapping[str, object]):
+        self._strict = strict
+        self._original = original
+
+    def __getitem__(self, key: str) -> object:
+        message = "Side effect blocked: os.environ[] read"
+        if self._strict:
+            raise RuntimeError(message)
+        _emit_warning(message)
+        return self._original[key]
+
+    def __setitem__(self, key: str, value: object) -> None:
+        message = "Side effect blocked: os.environ[] write"
+        if self._strict:
+            raise RuntimeError(message)
+        _emit_warning(message)
+        self._original[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        message = "Side effect blocked: os.environ del"
+        if self._strict:
+            raise RuntimeError(message)
+        _emit_warning(message)
+        del self._original[key]
+
+    def __iter__(self):
+        return iter(self._original)
+
+    def __len__(self) -> int:
+        return len(self._original)
+
+    def get(
+        self, key: str, default: object | None = None
+    ) -> object | None:  # pragma: no cover - passthrough
+        message = "Side effect blocked: os.environ.get"
+        if self._strict:
+            raise RuntimeError(message)
+        _emit_warning(message)
+        return self._original.get(key, default)
+
+
+def _apply_patches(strict: bool) -> list[tuple[object, str, object]]:
     """Monkeypatch common side-effect primitives with trapping functions.
+
+    Parameters
+    ----------
+    strict : bool
+        When ``False`` original behaviour is preserved after emitting warnings.
 
     Returns
     -------
@@ -122,137 +215,149 @@ def _apply_patches() -> list[tuple[object, str, object]]:
 
     patches: list[tuple[object, str, object]] = []
 
-    def patch(obj: object, attr: str, repl: object) -> None:
+    def patch_callable(obj: object, attr: str, name: str) -> None:
         original = getattr(obj, attr)
-        setattr(obj, attr, repl)
+        replacement = _trap(
+            name,
+            strict=strict,
+            original=None if strict else cast(Callable[..., object], original),
+        )
+        setattr(obj, attr, replacement)
         patches.append((obj, attr, original))
 
-    patch(builtins, "print", _trap("print"))
-    patch(builtins, "open", _trap("open"))
+    def patch_value(
+        obj: object, attr: str, factory: Callable[[object], object]
+    ) -> None:
+        original = getattr(obj, attr)
+        setattr(obj, attr, factory(original))
+        patches.append((obj, attr, original))
 
-    patch(random, "random", _trap("random.random"))
-    patch(random, "randint", _trap("random.randint"))
-    patch(random, "randrange", _trap("random.randrange"))
-    patch(random, "choice", _trap("random.choice"))
-    patch(random, "shuffle", _trap("random.shuffle"))
-    patch(secrets, "token_bytes", _trap("secrets.token_bytes"))
-    patch(secrets, "token_hex", _trap("secrets.token_hex"))
-    patch(secrets, "token_urlsafe", _trap("secrets.token_urlsafe"))
-    patch(os, "urandom", _trap("os.urandom"))
-    patch(uuid, "uuid4", _trap("uuid.uuid4"))
+    for func_obj, attr, name in (
+        (builtins, 'print', 'print'),
+        (builtins, 'open', 'open'),
+        (random, 'random', 'random.random'),
+        (random, 'randint', 'random.randint'),
+        (random, 'randrange', 'random.randrange'),
+        (random, 'choice', 'random.choice'),
+        (random, 'shuffle', 'random.shuffle'),
+        (secrets, 'token_bytes', 'secrets.token_bytes'),
+        (secrets, 'token_hex', 'secrets.token_hex'),
+        (secrets, 'token_urlsafe', 'secrets.token_urlsafe'),
+        (os, 'urandom', 'os.urandom'),
+        (uuid, 'uuid4', 'uuid.uuid4'),
+        (time, 'time', 'time.time'),
+        (time, 'sleep', 'time.sleep'),
+        (time, 'monotonic', 'time.monotonic'),
+        (time, 'perf_counter', 'time.perf_counter'),
+        (os, 'getenv', 'os.getenv'),
+        (os, 'system', 'os.system'),
+        (os, 'popen', 'os.popen'),
+        (os, '_exit', 'os._exit'),
+        (sys, 'exit', 'sys.exit'),
+        (subprocess, 'run', 'subprocess.run'),
+        (subprocess, 'Popen', 'subprocess.Popen'),
+        (subprocess, 'call', 'subprocess.call'),
+        (subprocess, 'check_call', 'subprocess.check_call'),
+        (subprocess, 'check_output', 'subprocess.check_output'),
+        (socket, 'socket', 'socket.socket'),
+        (threading.Thread, 'start', 'threading.Thread.start'),
+        (multiprocessing.Process, 'start', 'multiprocessing.Process.start'),
+        (
+            futures.ThreadPoolExecutor,
+            '__init__',
+            'ThreadPoolExecutor.__init__',
+        ),
+        (
+            futures.ProcessPoolExecutor,
+            '__init__',
+            'ProcessPoolExecutor.__init__',
+        ),
+        (logging.Logger, '_log', 'logging'),
+        (warnings, 'warn', 'warnings.warn'),
+        (atexit, 'register', 'atexit.register'),
+    ):
+        patch_callable(func_obj, attr, name)
 
-    patch(time, "time", _trap("time.time"))
-    patch(time, "sleep", _trap("time.sleep"))
-    patch(time, "monotonic", _trap("time.monotonic"))
-    patch(time, "perf_counter", _trap("time.perf_counter"))
+    original_datetime = datetime.datetime
 
-    class _TrapDateTime(datetime.datetime):
-        @override
-        @classmethod
-        def now(cls, *_args: object, **_kwargs: object) -> NoReturn:
-            """Prevent access to :meth:`datetime.datetime.now`."""
+    if strict:
+        class _TrapDateTime(original_datetime):
+            @override
+            @classmethod
+            def now(cls, *_args: object, **_kwargs: object) -> NoReturn:
+                raise RuntimeError('Side effect blocked: datetime.now')
 
-            raise RuntimeError("Side effect blocked: datetime.now")
+            @override
+            @classmethod
+            def utcnow(cls, *_args: object, **_kwargs: object) -> NoReturn:
+                raise RuntimeError('Side effect blocked: datetime.utcnow')
 
-        @override
-        @classmethod
-        def utcnow(cls, *_args: object, **_kwargs: object) -> NoReturn:
-            """Prevent access to :meth:`datetime.datetime.utcnow`."""
+            @override
+            @classmethod
+            def today(cls, *_args: object, **_kwargs: object) -> NoReturn:
+                raise RuntimeError('Side effect blocked: datetime.today')
 
-            raise RuntimeError("Side effect blocked: datetime.utcnow")
+        patch_value(datetime, 'datetime', lambda _orig: _TrapDateTime)
+    else:
+        class _WarnDateTime(original_datetime):
+            @override
+            @classmethod
+            def now(cls, *args: object, **kwargs: object) -> datetime.datetime:
+                _emit_warning('Side effect blocked: datetime.now')
+                return original_datetime.now(*args, **kwargs)
 
-        @override
-        @classmethod
-        def today(cls, *_args: object, **_kwargs: object) -> NoReturn:
-            """Prevent access to :meth:`datetime.datetime.today`."""
+            @override
+            @classmethod
+            def utcnow(cls, *args: object, **kwargs: object) -> datetime.datetime:
+                _emit_warning('Side effect blocked: datetime.utcnow')
+                return original_datetime.utcnow(*args, **kwargs)
 
-            raise RuntimeError("Side effect blocked: datetime.today")
+            @override
+            @classmethod
+            def today(cls, *args: object, **kwargs: object) -> datetime.datetime:
+                _emit_warning('Side effect blocked: datetime.today')
+                return original_datetime.today(*args, **kwargs)
 
-    patch(datetime, "datetime", _TrapDateTime)
+        patch_value(datetime, 'datetime', lambda _orig: _WarnDateTime)
 
-    patch(os, "getenv", _trap("os.getenv"))
+    patch_value(
+        os,
+        'environ',
+        lambda original: _TrapEnviron(
+            strict=strict,
+            original=cast('MutableMapping[str, object]', original),
+        ),
+    )
 
-    class _TrapEnviron(dict[str, object]):
-        @override
-        def __getitem__(self, _key: str) -> NoReturn:
-            """Reject environment lookups performed during the call."""
+    patch_value(
+        sys,
+        'stdout',
+        lambda original: _TrapStdIO(strict=strict, original=original),
+    )
+    patch_value(
+        sys,
+        'stderr',
+        lambda original: _TrapStdIO(strict=strict, original=original),
+    )
 
-            raise RuntimeError("Side effect blocked: os.environ[] read")
+    with suppress(Exception):
+        sqlite3 = importlib.import_module('sqlite3')
+        patch_callable(sqlite3, 'connect', 'sqlite3.connect')
+    with suppress(Exception):
+        psycopg2 = importlib.import_module('psycopg2')
+        patch_callable(psycopg2, 'connect', 'psycopg2.connect')
+    with suppress(Exception):
+        mysql_connector = importlib.import_module('mysql.connector')
+        patch_callable(mysql_connector, 'connect', 'mysql.connector.connect')
 
-        @override
-        def __setitem__(self, _key: str, _value: object) -> NoReturn:
-            """Reject environment mutations performed during the call."""
-
-            raise RuntimeError("Side effect blocked: os.environ[] write")
-
-        @override
-        def get(self, _key: str, _default: object | None = None) -> NoReturn:
-            """Reject environment reads using ``dict.get`` semantics."""
-
-            raise RuntimeError("Side effect blocked: os.environ.get")
-
-        @override
-        def __delitem__(self, _key: str) -> NoReturn:
-            """Reject deletions from the environment mapping."""
-
-            raise RuntimeError("Side effect blocked: os.environ del")
-
-    patch(os, "environ", _TrapEnviron())
-
-    patch(os, "system", _trap("os.system"))
-    patch(os, "popen", _trap("os.popen"))
-    patch(os, "_exit", _trap("os._exit"))
-    patch(sys, "exit", _trap("sys.exit"))
-
-    patch(subprocess, "run", _trap("subprocess.run"))
-    patch(subprocess, "Popen", _trap("subprocess.Popen"))
-    patch(subprocess, "call", _trap("subprocess.call"))
-    patch(subprocess, "check_call", _trap("subprocess.check_call"))
-    patch(subprocess, "check_output", _trap("subprocess.check_output"))
-
-    patch(socket, "socket", _trap("socket.socket"))
     with suppress(Exception):
         import http.client as http_client
 
-        patch(http_client, "HTTPConnection", _trap("http.client.HTTPConnection"))
-        patch(http_client, "HTTPSConnection", _trap("http.client.HTTPSConnection"))
-
-    patch(threading.Thread, "start", _trap("threading.Thread.start"))
-    patch(multiprocessing.Process, "start", _trap("multiprocessing.Process.start"))
-    patch(
-        futures.ThreadPoolExecutor,
-        "__init__",
-        _trap("ThreadPoolExecutor.__init__"),
-    )
-    patch(
-        futures.ProcessPoolExecutor,
-        "__init__",
-        _trap("ProcessPoolExecutor.__init__"),
-    )
-
-    patch(logging.Logger, "_log", _trap("logging"))
-    patch(warnings, "warn", _trap("warnings.warn"))
-
-    patch(atexit, "register", _trap("atexit.register"))
-
-    patch(sys, "stdout", _TrapStdIO())
-    patch(sys, "stderr", _TrapStdIO())
-
-    with suppress(Exception):
-        sqlite3 = importlib.import_module("sqlite3")
-        patch(sqlite3, "connect", _trap("sqlite3.connect"))
-    with suppress(Exception):
-        psycopg2 = importlib.import_module("psycopg2")
-        patch(psycopg2, "connect", _trap("psycopg2.connect"))
-    with suppress(Exception):
-        mysql_connector = importlib.import_module("mysql.connector")
-        patch(
-            mysql_connector,
-            "connect",
-            _trap("mysql.connector.connect"),
-        )
+        patch_callable(http_client, 'HTTPConnection', 'http.client.HTTPConnection')
+        patch_callable(http_client, 'HTTPSConnection', 'http.client.HTTPSConnection')
 
     return patches
+
 
 
 def _restore(patches: list[tuple[object, str, object]]) -> None:
@@ -268,41 +373,72 @@ def _restore(patches: list[tuple[object, str, object]]) -> None:
         setattr(obj, attr, original)
 
 
-def forbid_side_effects(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+@overload
+def forbid_side_effects(
+    fn: Callable[_P, _T], *, enabled: bool = True, strict: bool = True
+) -> Callable[_P, _T]: ...
+
+
+@overload
+def forbid_side_effects(
+    *, enabled: bool = True, strict: bool = True
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
+
+
+def forbid_side_effects(
+    fn: Callable[_P, _T] | None = None,
+    *,
+    enabled: bool = True,
+    strict: bool = True,
+) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
     """Reject attempts to perform common side effects while ``fn`` runs.
 
     Parameters
     ----------
-    fn : Callable[_P, _T]
+    fn : Callable[_P, _T] | None, optional
         The synchronous or asynchronous callable to wrap.
+    enabled : bool, optional
+        If ``False`` skip decorating and return ``fn`` unchanged.
+    strict : bool, optional
+        When ``False`` warn about attempted side effects but allow the original
+        call to proceed.
 
     Returns
     -------
-    Callable[_P, _T]
-        A wrapper that raises ``RuntimeError`` when patched primitives are
-        accessed during execution of ``fn``.
+    Callable
+        Either the decorated function or a decorator awaiting a function,
+        depending on whether ``fn`` was provided.
     """
-    if inspect.iscoroutinefunction(fn):
-        async_fn = cast("Callable[_P, Awaitable[object]]", fn)
 
-        @wraps(fn)
-        async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
-            async with _SIDE_EFFECT_LOCK:
-                patches = _apply_patches()
+    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+        if not enabled:
+            return func
+
+        if inspect.iscoroutinefunction(func):
+            async_fn = cast("Callable[_P, Awaitable[object]]", func)
+
+            @wraps(func)
+            async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> object:
+                async with _SIDE_EFFECT_LOCK:
+                    patches = _apply_patches(strict)
+                    try:
+                        return await async_fn(*args, **kwargs)
+                    finally:
+                        _restore(patches)
+
+            return cast("Callable[_P, _T]", async_wrapper)
+
+        @wraps(func)
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            with _SIDE_EFFECT_LOCK:
+                patches = _apply_patches(strict)
                 try:
-                    return await async_fn(*args, **kwargs)
+                    return func(*args, **kwargs)
                 finally:
                     _restore(patches)
 
-        return cast("Callable[_P, _T]", async_wrapper)
+        return wrapper
 
-    @wraps(fn)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-        with _SIDE_EFFECT_LOCK:
-            patches = _apply_patches()
-            try:
-                return fn(*args, **kwargs)
-            finally:
-                _restore(patches)
-
-    return wrapper
+    if fn is not None:
+        return decorator(fn)
+    return decorator

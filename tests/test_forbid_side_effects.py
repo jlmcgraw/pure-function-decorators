@@ -95,3 +95,28 @@ def test_pure_function_succeeds() -> None:
     # restore the patched globals afterwards so ``print`` works as normal.
     assert pure_function(2, 3) == 5
     print("side effects restored")
+
+
+@forbid_side_effects(strict=False)
+def relaxed_print() -> int:
+    print("relaxed")
+    return 42
+
+
+def test_strict_false_warns_and_allows(capfd: pytest.CaptureFixture[str]) -> None:
+    assert relaxed_print() == 42
+    captured = capfd.readouterr()
+    assert "relaxed" in captured.out
+    assert "Side effect blocked" in captured.err
+
+
+@forbid_side_effects(enabled=False)
+def allowed_print() -> None:
+    print("allowed")
+
+
+def test_enabled_false_does_not_patch(capfd: pytest.CaptureFixture[str]) -> None:
+    allowed_print()
+    captured = capfd.readouterr()
+    assert captured.out == "allowed\n"
+    assert "Side effect blocked" not in captured.err

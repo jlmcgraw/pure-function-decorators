@@ -159,17 +159,30 @@ def _first_diff(a: Any, b: Any, path: _Path = ()) -> _Diff | None:
 
 
 @overload
-def immutable_arguments(fn: Callable[_P, _T]) -> Callable[_P, _T]: ...
+def immutable_arguments(
+    fn: Callable[_P, _T],
+    *,
+    warn_only: bool = False,
+    enabled: bool = True,
+    strict: bool = True,
+) -> Callable[_P, _T]: ...
 
 
 @overload
 def immutable_arguments(
-    *, warn_only: bool = False
+    *,
+    warn_only: bool = False,
+    enabled: bool = True,
+    strict: bool = True,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
 
 
 def immutable_arguments(
-    fn: Callable[_P, _T] | None = None, *, warn_only: bool = False
+    fn: Callable[_P, _T] | None = None,
+    *,
+    warn_only: bool = False,
+    enabled: bool = True,
+    strict: bool = True,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]] | Callable[_P, _T]:
     """Prevent and surface in-place mutations performed by ``fn``.
 
@@ -181,6 +194,11 @@ def immutable_arguments(
     warn_only : bool, optional
         If ``True`` log detected mutations instead of raising
         ``RuntimeError``.
+    enabled : bool, optional
+        If ``False`` skip decorating and return ``fn`` unchanged.
+    strict : bool, optional
+        When ``False`` log warnings instead of raising ``RuntimeError`` when
+        mutations are detected.
 
     Returns
     -------
@@ -196,6 +214,11 @@ def immutable_arguments(
     """
 
     def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+        if not enabled:
+            return func
+
+        effective_strict = strict and not warn_only
+
         @wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
             frozen_memo: dict[int, object] = {}
@@ -216,7 +239,7 @@ def immutable_arguments(
                     diff_path, message = diff
                     joined = "/".join(diff_path)
                     text = f"Argument mutated at {joined}: {message}"
-                    if warn_only:
+                    if warn_only or not effective_strict:
                         _LOGGER.warning(text)
                         continue
                     raise RuntimeError(text)
@@ -228,7 +251,7 @@ def immutable_arguments(
                     diff_path, message = diff
                     joined = "/".join(diff_path)
                     text = f"Argument mutated at {joined}: {message}"
-                    if warn_only:
+                    if warn_only or not effective_strict:
                         _LOGGER.warning(text)
                         continue
                     raise RuntimeError(text)

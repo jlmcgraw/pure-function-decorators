@@ -137,3 +137,31 @@ def test_threaded_nondeterministic_values_rejected() -> None:
 
     assert any(isinstance(err, ValueError) for err in errors)
     assert len(results) + len(errors) == 2
+
+
+def test_strict_false_warns(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("WARNING")
+    counter = {"value": 0}
+
+    @enforce_deterministic(strict=False)
+    def relaxed_bump() -> int:
+        counter["value"] += 1
+        return counter["value"]
+
+    assert relaxed_bump() == 1
+    assert relaxed_bump() == 2
+    assert any(
+        "Non-deterministic output detected" in message for message in caplog.messages
+    )
+
+
+def test_enabled_false_skips_checks() -> None:
+    state = {"value": 0}
+
+    @enforce_deterministic(enabled=False)
+    def bump_without_checks() -> int:
+        state["value"] += 1
+        return state["value"]
+
+    assert bump_without_checks() == 1
+    assert bump_without_checks() == 2

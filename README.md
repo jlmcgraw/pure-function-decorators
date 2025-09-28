@@ -62,15 +62,18 @@ The complete documentation can be found at the
 ## Existing decorators
 
 - `immutable_arguments` deep-copies inputs before invoking the wrapped callable so callers never see in-place mutations.
-    - By default, the decorator raises when a mutation is detected
-    - it can instead log warnings with `warn_only=True`.
+    - By default, the decorator raises when a mutation is detected.
+    - Use `warn_only=True` or `strict=False` to log warnings instead of raising, or `enabled=False` to bypass checks.
 - `enforce_deterministic` ensures that the decorated function consistently returns the same result for the same
   parameters.
+    - Set `strict=False` to emit warnings when nondeterministic behaviour is observed or `enabled=False` to skip wrapping.
 - `forbid_globals` prevents a function from reading or mutating module-level state by sandboxing its globals.
     - `check_names=True` to also fail decoration when bytecode references globals outside the allow-list, or set
     - `sandbox=False` to keep only the bytecode-based validation.
+    - Configure `strict=False` to log name-check violations instead of raising or `enabled=False` to leave the function unchanged.
 - `forbid_side_effects` instruments builtin operations that commonly mutate process state (e.g. file writes, subprocess
   launches) to surface accidental side effects.
+    - Pass `strict=False` to warn and allow the attempted side effect or `enabled=False` to skip patching entirely.
 
 ## Future purity checks to explore
 
