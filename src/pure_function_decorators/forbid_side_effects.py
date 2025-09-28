@@ -23,7 +23,17 @@ import uuid
 import warnings
 from contextlib import suppress
 from functools import wraps
-from typing import Final, NoReturn, Self, TypeVar, cast, overload, override
+from typing import (
+    Final,
+    NoReturn,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+    overload,
+    override,
+    runtime_checkable,
+)
 from collections.abc import Awaitable, Callable, Iterator, MutableMapping
 
 _LOGGER = logging.getLogger(__name__)
@@ -117,13 +127,27 @@ def _trap(
     return _handler
 
 
+@runtime_checkable
+class _SupportsWrite(Protocol):
+    """Protocol for objects that expose a ``write`` method."""
+
+    def write(self, *args: object, **kwargs: object) -> object: ...
+
+
+@runtime_checkable
+class _SupportsFlush(Protocol):
+    """Protocol for objects that expose a ``flush`` method."""
+
+    def flush(self) -> object: ...
+
+
 class _TrapStdIO:
     """File-like object that reacts to writes to stdout/stderr."""
 
     def __init__(self, *, strict: bool, original: object | None = None) -> None:
         """Store behaviour configuration for stdio interception."""
-        self._strict = strict
-        self._original = original
+        self._strict: bool = strict
+        self._original: object | None = original
 
     def write(self, *args: object, **kwargs: object) -> object:
         """Handle writes by raising or delegating with a warning."""
@@ -131,14 +155,16 @@ class _TrapStdIO:
         if self._strict:
             raise RuntimeError(message)
         _emit_warning(message)
-        if self._original is not None and hasattr(self._original, "write"):
-            return self._original.write(*args, **kwargs)
+        original = self._original
+        if original is not None and isinstance(original, _SupportsWrite):
+            return original.write(*args, **kwargs)
         return None
 
     def flush(self) -> object:
         """Provide a harmless flush implementation for callers that expect one."""
-        if self._original is not None and hasattr(self._original, "flush"):
-            return self._original.flush()
+        original = self._original
+        if original is not None and isinstance(original, _SupportsFlush):
+            return original.flush()
         return None
 
     def __getattr__(self, item: str) -> object:
@@ -155,8 +181,8 @@ class _TrapEnviron(MutableMapping[str, str]):
     """Proxy object that enforces side-effect policy for ``os.environ``."""
 
     def __init__(self, *, strict: bool, original: MutableMapping[str, str]) -> None:
-        self._strict = strict
-        self._original = original
+        self._strict: bool = strict
+        self._original: MutableMapping[str, str] = original
 
     @override
     def __getitem__(self, key: str) -> str:
@@ -245,7 +271,7 @@ def _make_datetime_proxy(*, strict: bool) -> type[datetime.datetime]:
         @classmethod
         def utcnow(cls) -> _WarnDateTime:
             _emit_warning("Side effect blocked: datetime.utcnow")
-            return super().utcnow()
+            return super().now(datetime.UTC)
 
         @override
         @classmethod
