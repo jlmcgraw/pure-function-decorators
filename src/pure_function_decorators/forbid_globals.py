@@ -8,8 +8,10 @@ import inspect
 import logging
 import types
 from functools import wraps
-from typing import Final, cast, overload
-from collections.abc import Awaitable, Callable, Iterable
+from typing import TYPE_CHECKING, Final, cast, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Iterable
 
 _GLOBAL_OPS: Final = {"LOAD_GLOBAL", "STORE_GLOBAL", "DELETE_GLOBAL"}
 _IMPORT_OPS: Final = {"IMPORT_NAME"}
